@@ -84,11 +84,22 @@ fi
 ok "ssh works"
 
 say "generation: wanted vs running"
+# The flake is the repo this script lives in, not the caller's working
+# directory: `.#` from anywhere else evaluates nothing and reads as an empty
+# `want`.  The evaluation's stderr is kept and shown on failure — swallowing
+# it left `want=''` with no reason at all, twice (2026-11-17 and -18).
+repo=$(cd "$(dirname "$0")/.." && pwd)
+evalerr=$(mktemp)
+trap 'rm -f "$evalerr"' EXIT
 want=$(nix eval --no-update-lock-file --raw \
-  ".#nixosConfigurations.${m}.config.system.build.toplevel" 2>/dev/null)
+  "${repo}#nixosConfigurations.${m}.config.system.build.toplevel" 2>"$evalerr")
 have=$(ssh -o ConnectTimeout=8 "root@${host}" readlink /run/current-system 2>/dev/null)
 if [ -z "$want" ] || [ -z "$have" ]; then
   bad "could not read one of the two paths (want='$want' have='$have')"
+  if [ -z "$want" ]; then
+    echo "      nix eval said (warnings left out):"
+    grep -v -E '^evaluation warning:|^[[:space:]]|^$' "$evalerr" | tail -8 | sed 's/^/        /'
+  fi
 elif [ "$want" = "$have" ]; then
   ok "$(basename "$have")"
 else
