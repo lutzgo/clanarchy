@@ -806,28 +806,39 @@ in {
         }
       '';
 
-      # Yazi — file manager keybindings
-      xdg.configFile."yazi/keymap.toml".text = ''
-        [[manager.prepend_keymap]]
-        on  = [ "e" ]
-        run = "open --with ${editorBin}"
-        desc = "Open in ${editorDesc}"
-
-        [[manager.prepend_keymap]]
-        on  = [ "s" ]
-        run = "shell 'foot --working-directory $PWD'"
-        desc = "Open terminal here"
-
-        [[manager.prepend_keymap]]
-        on  = [ "g" ]
-        run = "shell 'foot -T lazyjj -e lazyjj'"
-        desc = "Lazyjj"
-
-        [[manager.prepend_keymap]]
-        on  = [ "A" ]
-        run = "select_all"
-        desc = "Select all"
-      '';
+      # Yazi — through programs.yazi, NOT as a bare package with a hand-written
+      # keymap.toml. Stylix's yazi target only sets `programs.yazi.theme`, and
+      # Home Manager writes theme.toml from that only when programs.yazi is
+      # enabled — so as a bare package yazi silently kept its default colours
+      # (seen on miralda 2026-11-19: ~/.config/yazi held keymap.toml alone).
+      programs.yazi = {
+        enable = true;
+        # Explicit, to settle the stateVersion warning: `y` is the shell
+        # wrapper that cd's into the directory yazi was left in.
+        shellWrapperName = "y";
+        keymap.mgr.prepend_keymap = [
+          {
+            on = ["e"];
+            run = "open --with ${editorBin}";
+            desc = "Open in ${editorDesc}";
+          }
+          {
+            on = ["s"];
+            run = "shell 'foot --working-directory $PWD'";
+            desc = "Open terminal here";
+          }
+          {
+            on = ["g"];
+            run = "shell 'foot -T lazyjj -e lazyjj'";
+            desc = "Lazyjj";
+          }
+          {
+            on = ["A"];
+            run = "select_all";
+            desc = "Select all";
+          }
+        ];
+      };
 
       # scdaemon.conf — force scdaemon to use pcscd instead of its built-in CCID driver.
       # Without disable-ccid, scdaemon tries direct libusb/CCID access first and races
@@ -888,7 +899,6 @@ in {
 
           # Terminal + shell tools
           zellij # terminal multiplexer
-          yazi # file manager
           # jj itself is NOT listed here: programs.jujutsu above already puts it
           # on PATH, and listing it again just duplicates the entry.
           lazyjj # jj TUI — bound to Space+G in helix and to g in yazi
