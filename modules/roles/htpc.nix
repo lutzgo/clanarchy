@@ -1961,6 +1961,34 @@ in {
       ];
     };
 
+    # ── AND A FLOOR UNDER THE QUANTUM, BECAUSE HEADROOM ALONE DID NOT DO IT ───
+    #
+    # The headroom above (#469) was live — pw-dump showed it on the node — and
+    # the film on 2026-11-18 evening (20:19–21:13) still had many short
+    # dropouts. That film was AC3 5.1 sent as PASSTHROUGH (kodi.log:
+    # "pass-through", and ac3transcode is on, so most multichannel audio goes
+    # out as an IEC958 bitstream). A late cycle there is not a click: it
+    # breaks an AC3 frame and the TV mutes until it resyncs, which is the
+    # "short outage" heard.
+    #
+    # Why the graph ran at 512 at all: Kodi asks for ~800 frames, and
+    # PipeWire rounds a latency request DOWN to a power of two. With the
+    # shipped min-quantum of 32 nothing stops that, so the HDMI sink was
+    # woken every 10.7 ms with ~10 ms queued (the measurement above).
+    #
+    # 1024 (21 ms) is the floor for the whole graph. That costs nothing on a
+    # TV: Kodi derives A/V sync from the latency the sink reports, and 21 ms
+    # is below what a game in the gamescope session can perceive.
+    #
+    # NOT MEASURED BEFORE THE CHANGE — a test play was declined, so this is
+    # the most likely cause, not a proven one. VERIFY during a passthrough
+    # film: `pw-top` shows QUANT 1024 (or more) on the sink and ERR stays
+    # flat. If ERR still climbs, the next step is Kodi's passthrough device on
+    # ALSA directly instead of PipeWire.
+    services.pipewire.extraConfig.pipewire."51-htpc-min-quantum" = lib.mkIf (cfg.display.gpuPciAddress != null) {
+      "context.properties"."default.clock.min-quantum" = 1024;
+    };
+
     # Hold the TV's audio card on one profile — see mediaClient.audioProfile
     # for why this is the setting that decides whether passthrough exists.
     #
