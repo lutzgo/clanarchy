@@ -97,6 +97,12 @@ in {
     # Without this regreet can't pre-select them; they'd have to type the username every login.
     environment.shells = [pkgs.nushell];
 
+    # gvfs, for yazi's gvfs plugin (modules/users/lgo/yazi.nix): MTP phones,
+    # cameras, USB drives and WebDAV/SMB/SFTP mounts. The nixpkgs build carries
+    # all of those backends (libmtp, libsoup, samba). System-level because the
+    # daemons are D-Bus services, which is why it sits here and not in yazi.nix.
+    services.gvfs.enable = true;
+
     # CalDAV sync: push org TODOs/habits to Nextcloud as VTODO entries.
     clanarchy.caldavSync = {
       enable = true;
@@ -291,6 +297,9 @@ in {
         ./lgo/browsers.nix
         # Console desktop tools: aerc (TUI email), oama (Gmail OAuth2), w3m (HTML mail).
         ./lgo/console-desktop.nix
+        # yazi: Stylix theme, plugins (archives, gvfs mounts, previewers),
+        # nvim + zellij integration. Its gvfs daemon is enabled below.
+        ./lgo/yazi.nix
       ];
 
       clanarchy.consoleDesktop.enable = true;
@@ -323,6 +332,11 @@ in {
             style = "mocha";
             transparent = false;
           };
+          # yazi inside Neovim, as a float. NOT <leader>y — govim has that
+          # as yank-to-clipboard; nvf's defaults are free: <leader>- (at the
+          # current file), <leader>cw (nvim's cwd), <C-Up> (resume). Oil keeps
+          # <leader>e.
+          vim.utility.yazi-nvim.enable = true;
           vim.extraPlugins = {
             base16-nvim = {
               package = pkgs.vimPlugins.base16-nvim;
@@ -805,40 +819,6 @@ in {
             }
         }
       '';
-
-      # Yazi — through programs.yazi, NOT as a bare package with a hand-written
-      # keymap.toml. Stylix's yazi target only sets `programs.yazi.theme`, and
-      # Home Manager writes theme.toml from that only when programs.yazi is
-      # enabled — so as a bare package yazi silently kept its default colours
-      # (seen on miralda 2026-11-19: ~/.config/yazi held keymap.toml alone).
-      programs.yazi = {
-        enable = true;
-        # Explicit, to settle the stateVersion warning: `y` is the shell
-        # wrapper that cd's into the directory yazi was left in.
-        shellWrapperName = "y";
-        keymap.mgr.prepend_keymap = [
-          {
-            on = ["e"];
-            run = "open --with ${editorBin}";
-            desc = "Open in ${editorDesc}";
-          }
-          {
-            on = ["s"];
-            run = "shell 'foot --working-directory $PWD'";
-            desc = "Open terminal here";
-          }
-          {
-            on = ["g"];
-            run = "shell 'foot -T lazyjj -e lazyjj'";
-            desc = "Lazyjj";
-          }
-          {
-            on = ["A"];
-            run = "select_all";
-            desc = "Select all";
-          }
-        ];
-      };
 
       # scdaemon.conf — force scdaemon to use pcscd instead of its built-in CCID driver.
       # Without disable-ccid, scdaemon tries direct libusb/CCID access first and races
