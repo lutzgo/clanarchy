@@ -79,6 +79,10 @@
           # the same way on jens, 2026-11-04.
           "^krita$"
           "^com\\.obsproject\\.Studio$"
+          # Ids verified the same way on miralda, 2026-11-20 (Xournal++ 1.3.8,
+          # Inkscape 1.4.4).
+          "^com\\.github\\.xournalpp\\.xournalpp$"
+          "^org\\.inkscape\\.Inkscape$"
         ];
         description = "app-id regexes held at full opacity while focused. These are the apps that render their own chrome and become unreadable when translucent. Unfocused they fall through to `unfocused` and get blurred like anything else. Note that a focused window not on this list gets no blur either — blur is applied to foot and to unfocused windows only — so an app missing from here looks transparent *and* unblurred. Setting this replaces the list; to keep the defaults and add to them, use `extraOpaqueApps`. Check an app's real app-id with `niri msg windows`.";
       };
