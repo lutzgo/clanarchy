@@ -9,7 +9,7 @@ Optional application bundles, and the per-machine service options that go with t
 |--------|------|-------------|
 | `clanarchy.apps.communication.enable` | `boolean` | Whether to enable communication and connectivity apps (Signal, Anytype, Valent/KDE Connect). |
 | `clanarchy.apps.containers.enable` | `boolean` | Whether to enable container runtime (Podman with Docker compatibility + docker-compose). |
-| `clanarchy.apps.desktopTools.enable` | `boolean` | Whether to enable desktop utility apps (terminal, fastfetch, document tools, color calibration, LibreOffice). |
+| `clanarchy.apps.desktopTools.enable` | `boolean` | Whether to enable desktop utility apps (terminal, fastfetch, document tools, color calibration, LibreOffice, Xournal++). |
 | `clanarchy.apps.emulation.switch.enable` | `boolean` | Whether to enable Nintendo Switch emulation (Eden). |
 | `clanarchy.apps.flatpak.enable` | `boolean` | Whether to enable Flatpak sandbox with Flathub remote. |
 | `clanarchy.apps.gnomeCoreApps.enable` | `boolean` | Whether to enable GNOME core apps (text editor, calculator, software center). |
