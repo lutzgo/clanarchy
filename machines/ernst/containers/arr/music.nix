@@ -155,6 +155,19 @@
   sldlPlaylists = pkgs.writers.writePython3Bin "sldl-playlists" {
     flakeIgnore = ["E501"];
   } (builtins.readFile ../../sldl-playlists.py);
+
+  # See systemd.services.music-import below.
+  musicPublish = pkgs.writeShellApplication {
+    name = "music-publish";
+    runtimeInputs = with pkgs; [coreutils findutils gnused];
+    text = ''
+      ST=${beetsStagingRoot}
+      LIB=/srv/media/library/music
+      MANIFEST=${beetsStateDir}/published.list
+
+      ${builtins.readFile ../../music-publish.sh}
+    '';
+  };
 in {
   # ── 2026-09-08.  The Navidrome metrics password ───────────────────────────
   #
@@ -203,7 +216,59 @@ in {
       Persistent = true;
     };
   };
-  environment.systemPackages = [sldlPlaylists];
+  environment.systemPackages = [sldlPlaylists musicPublish];
+
+  # ── 2026-11-23.  The sldl batch into the library, without a human ─────────
+  #
+  # Stages 2 and 3 of docs/guides/music-pipeline.md (`music-stage`, then the
+  # publish) were run by hand, the publish from an untracked script in /root.
+  # This is the same two steps, daily, at 06:00 so the 06:30 sldl-playlists
+  # run sees the new files.  Soularr's route (slskd → Lidarr) never needed
+  # this: Soularr asks Lidarr to import each finished album itself.
+  #
+  # GATED, because beets re-reads ~9,000 files to decide they are duplicates.
+  # The stamp is touched BEFORE beets starts, not after, so a download that
+  # finishes during a run is newer than the stamp and is picked up next time.
+  # The publish always runs: it is a sorted diff against the ledger.
+  #
+  # On the host, like sldl-playlists: every path here is a plain host path,
+  # and the beets config names the same ones the container sees.  BEETSDIR
+  # gives beets a writable home for state.pickle under ProtectSystem=strict.
+  #
+  # By hand: `systemctl start music-import`, or `DRY=1 music-publish` for a
+  # preview of the publish alone.
+  systemd.services.music-import = {
+    description = "Stage new sldl downloads with beets and publish them into the music library";
+    environment.BEETSDIR = beetsStateDir;
+    path = [musicStage musicPublish pkgs.coreutils pkgs.findutils];
+    script = ''
+      stamp=${beetsStateDir}/.last-stage
+      if [ ! -e "$stamp" ] || [ -n "$(find ${soulseekRoot}/sldl -type f ! -name '*.incomplete' -newer "$stamp" -print -quit)" ]; then
+        touch "$stamp"
+        music-stage
+      else
+        echo "music-import: nothing new in ${soulseekRoot}/sldl since $(date -r "$stamp" '+%F %T'); skipping beets"
+      fi
+      DRY=0 music-publish
+    '';
+    serviceConfig = {
+      Type = "oneshot";
+      UMask = "0002";
+      ProtectSystem = "strict";
+      ReadWritePaths = [beetsStagingRoot beetsStateDir "/srv/media/library/music"];
+      PrivateTmp = true;
+      NoNewPrivileges = true;
+      Nice = 10;
+      IOSchedulingClass = "idle";
+    };
+  };
+  systemd.timers.music-import = {
+    wantedBy = ["timers.target"];
+    timerConfig = {
+      OnCalendar = "06:00";
+      Persistent = true;
+    };
+  };
 
   systemd.services.navidrome-secrets = {
     description = "Stage Navidrome's Prometheus password for container@arr";

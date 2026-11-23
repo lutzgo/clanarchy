@@ -1,9 +1,9 @@
 # Getting playlist downloads into the music library
 
-From a Spotify/CSV playlist to something Navidrome serves. Four stages, three of them automated.
+From a Spotify/CSV playlist to something Navidrome serves. Four stages; only the first — starting an sldl batch — is manual.
 
 ```
-sldl              beets             cp                Navidrome
+sldl              beets             music-publish     Navidrome
 (VPN guest)   →   music-stage   →   into the      →   indexes by
 playlists         Artist/Album/     library           TAGS
 ```
@@ -11,8 +11,8 @@ playlists         Artist/Album/     library           TAGS
 | Stage | Where | Command |
 |---|---|---|
 | download | VPN guest, `10.0.90.11` | `sldl <csv> -c …/sldl.conf` |
-| organise | `arr` container | `music-stage` |
-| publish | ernst host | `cp -rn` + `chmod` (below) |
+| organise | ernst host, `music-import.timer` 06:00 | `music-stage` |
+| publish | ernst host, same unit | `music-publish` |
 | serve | Navidrome | automatic |
 
 ## Why Lidarr is not in that diagram
@@ -43,33 +43,23 @@ Everything you never add stays listed under **`/unmapped`** and is left alone. T
 
 See the sldl section of [the VPN runbook](../runbooks/ernst-vpn-microvm-deploy.md). Downloads land in `/srv/media/soulseek/sldl/<playlist>/`.
 
-## 2. Organise
+## 2 + 3. Organise and publish — automatic
+
+`music-import.service` runs daily at 06:00 (before `sldl-playlists` at 06:30):
+
+1. **`music-stage`** — beets with this deployment's config and `-A -s` baked in, over `/srv/media/soulseek/sldl`. It **copies** rather than moves, so sldl's per-playlist `_index.csv` bookkeeping stays intact. Skipped when no finished file is newer than `/srv/state/beets/.last-stage`. Output: `/srv/media/staging/music/Artist/Album/Title.ext`.
+2. **`music-publish`** — copies every staged file not yet in the ledger `/srv/state/beets/published.list` into `/srv/media/library/music`, merges artist folders case-insensitively into the library's existing spelling, and sets `:media` `0664`/`2770`. Tagless files under `_/` are never published.
+
+By hand:
 
 ```bash
 ssh root@ernst.skynet.lan
-nixos-container run arr -- music-stage        # defaults to the sldl tree
+systemctl start music-import && journalctl -u music-import -n 20
+DRY=1 music-publish           # preview the publish alone
 ```
 
-`music-stage` is beets with this deployment's config and `-A -s` baked in. It **copies** rather than moves, so sldl's per-playlist `_index.csv` bookkeeping stays intact and the batch is undisturbed. Re-running is cheap: the catalogue in `/srv/state/beets` makes it incremental.
-
-Output: `/srv/media/staging/music/Artist/Album/Title.ext`.
-
-## 3. Publish into the library
-
-```bash
-cp -rn /srv/media/staging/music/. /srv/media/library/music/
-find /srv/media/library/music -newermt "-10min" -type f -exec chmod 0664 {} +
-find /srv/media/library/music -newermt "-10min" -type d -exec chmod 2770 {} +
-```
-
-!!! danger "The chmod is not optional"
-    `cp` applies your shell's umask, so files land `0644` — **not** group-writable. The library convention is `0664` files / `2770` setgid directories owned `:media`, which is what lets Lidarr (uid 3017, group `media`) manage anything it later adopts. Skipping this silently creates files Lidarr cannot touch. Verify with:
-
-    ```bash
-    find /srv/media/library/music -newermt "-10min" -type f ! -perm -g=w | wc -l   # expect 0
-    ```
-
-`-n` (no-clobber) means an existing file always wins. Artists already in the library merge; nothing is overwritten.
+!!! danger "Do not publish with `cp -rn`"
+    Lidarr adopts and **renames** what lands in the library (`Album (Year)/Artist - Album - NN - Title`). Measured 2026-11-23: 5,825 of 7,525 published files are no longer at the path they were copied to. A path-based no-clobber copy re-copies all of them as duplicates. The ledger is what prevents that; `music-publish` is the only publish.
 
 ## 4. Navidrome
 
@@ -90,19 +80,9 @@ rm -f /tmp/nd.db
 
 The song count can exceed the file count slightly — Navidrome counts some multi-artist entries separately.
 
-## Two things that need a human
+## What still needs a human
 
-**Case-variant artist folders.** beets files by the tags it is given, so inconsistent tags produce `Florence + the Machine` *and* `Florence + The Machine`. `cp -rn` then creates a second folder and the artist is split in Navidrome. Check before copying:
-
-```bash
-ls -1 /srv/media/library/music > /tmp/lib.txt
-ls -1 /srv/media/staging/music > /tmp/stage.txt
-join -t'|' <(awk '{print tolower($0)"|"$0}' /tmp/lib.txt   | sort -t'|' -k1,1) \
-           <(awk '{print tolower($0)"|"$0}' /tmp/stage.txt | sort -t'|' -k1,1) \
-  | awk -F'|' '$2 != $3 {print "  lib: " $2 "   stage: " $3}'
-```
-
-Merge any hit into the library's spelling before step 3.
+**Case-variant artist folders** are handled by `music-publish`, which files a staged `Florence + The Machine/` into an existing `Florence + the Machine/`. Variants *inside* staging that have no library folder yet still split; merge them by hand when you notice one.
 
 **Files with no tags at all.** beets cannot place them and files them under `_/`. Do not copy that into the library:
 
@@ -112,3 +92,17 @@ mv /srv/media/staging/music/_/* /srv/media/staging/untagged/ && rmdir /srv/media
 ```
 
 Tag them by hand or delete them. Of the first 239 files, exactly two were in this state.
+
+## The other Soulseek route: Soularr → Lidarr
+
+Separate from all of the above, and already automatic: `soularr.timer` searches slskd for Lidarr's *wanted* albums, waits for the download, and asks Lidarr to import it from `/srv/media/soulseek/complete/`. A successful import **moves** the folder out, so what remains there is one of:
+
+- **`complete/failed_imports/<Artist - Album (Year)>/`** — Lidarr refused the match (classical releases, deluxe editions, partial downloads). Soularr denylists that release and does not retry it. Import one by hand in **Lidarr → Wanted → Manual Import** (pick the folder, choose the release), or delete it.
+- **Any other folder older than a day** — a download Soularr gave up on (often 1–3 files of an album). Safe to delete; Soularr searches the album again.
+
+To see what is waiting:
+
+```bash
+ls /srv/media/soulseek/complete/failed_imports | wc -l
+find /srv/media/soulseek/complete -mindepth 1 -maxdepth 1 -type d ! -name failed_imports -mtime +1
+```
