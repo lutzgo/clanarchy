@@ -58,11 +58,24 @@ cmd_list() {
 }
 
 # Which titles exist in both libraries.  Deliberately crude — it lowercases and
-# strips punctuation, then looks for one name inside the other.  The author
-# directories are NOT comparable: Audiobookshelf files Banks under
-# "Iain M. Banks" and Bindery under "Iain Banks", so an author-level join
-# misses real pairs.  Titles are the only thing that lines up.
+# strips punctuation, then looks for one title inside the other, WORD-ALIGNED.
+#
+# The author directories are NOT comparable as strings: Audiobookshelf files
+# Banks under "Iain M. Banks" and Bindery under "Iain Banks", so a full-name
+# join misses real pairs.  The SURNAME (last word) does line up, and it is
+# required: without it, MEASURED 2026-11-23, 28 announced "pairs" included
+# Dawkins' "God" against Wells' "Food of the Gods" and Asimov's "Book 3"
+# against Scalzi's and Taylor's — every short title became a wildcard.
+#
+# Word-aligned (" foundation " inside " prelude to foundation "), so
+# "Foundation" no longer matches "Foundation's Edge", and an EXACT title wins
+# over a containing one, so the audiobook "Foundation" pairs with the ebook
+# "Foundation" rather than with whichever "Foundation and Empire" sorted first.
 norm() { tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9 ]//g; s/  */ /g; s/^ //; s/ $//'; }
+
+# A trailing "(1968)" or "()" is the library's year slot, not the title.
+title_of() { sed 's/ *([^)]*)$//' | norm; }
+surname_of() { norm | awk '{print $NF}'; }
 
 # The pair join, once, machine-readable: "<ebook>\t<audiobook>" per line.
 # cmd_pairs pretty-prints it and cmd_new filters it; neither reimplements it,
@@ -71,21 +84,33 @@ norm() { tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9 ]//g; s/  */ /g; s/^ //; s
 emit_pairs() {
   tmp=$(mktemp -d); trap 'rm -rf "$tmp"' RETURN
 
-  find "$EBOOKS" -type f -iname '*.epub' -printf '%p\n' 2>/dev/null > "$tmp/ebooks"
-  find "$AUDIO" -mindepth 2 -maxdepth 2 -type d -printf '%p\n' 2>/dev/null > "$tmp/audio"
-
-  while IFS= read -r ab; do
-    abt=$(basename "$ab" | norm)
-    [ -n "$abt" ] || continue
+  # Ebooks, normalised ONCE: "<title>\t<surname>\t<path>".  Bindery's layout
+  # is <Author>/<Title (Year)>/<Title - Author>.epub; the title comes from
+  # the file name with its " - Author" suffix stripped, the author from the
+  # grandparent directory.
+  find "$EBOOKS" -type f -iname '*.epub' -printf '%p\n' 2>/dev/null |
     while IFS= read -r eb; do
-      # Strip the " - Author.epub" suffix Bindery's naming template appends.
-      ebt=$(basename "$eb" .epub | sed 's/ - [^-]*$//' | norm)
-      [ -n "$ebt" ] || continue
-      case "$abt" in *"$ebt"*) ;; *) case "$ebt" in *"$abt"*) ;; *) continue ;; esac ;; esac
-      printf '%s\t%s\n' "$eb" "$ab"
-      break
-    done < "$tmp/ebooks"
-  done < "$tmp/audio"
+      t=$(basename "$eb" .epub | sed 's/ - [^-]*$//' | title_of)
+      a=$(basename "$(dirname "$(dirname "$eb")")" | surname_of)
+      [ -n "$t" ] && printf '%s\t%s\t%s\n' "$t" "$a" "$eb"
+    done > "$tmp/ebooks"
+
+  find "$AUDIO" -mindepth 2 -maxdepth 2 -type d -printf '%p\n' 2>/dev/null |
+    while IFS= read -r ab; do
+      abt=$(basename "$ab" | title_of)
+      aba=$(basename "$(dirname "$ab")" | surname_of)
+      [ -n "$abt" ] || continue
+      exact=""; loose=""
+      while IFS=$(printf '\t') read -r ebt eba eb; do
+        [ "$eba" = "$aba" ] || continue
+        if [ "$ebt" = "$abt" ]; then exact=$eb; break; fi
+        [ -n "$loose" ] && continue
+        case " $abt " in *" $ebt "*) loose=$eb; continue ;; esac
+        case " $ebt " in *" $abt "*) loose=$eb ;; esac
+      done < "$tmp/ebooks"
+      m=${exact:-$loose}
+      [ -n "$m" ] && printf '%s\t%s\n' "$m" "$ab"
+    done
 }
 
 cmd_pairs() {
