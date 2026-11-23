@@ -6,6 +6,9 @@
   ...
 }: let
   cfg = config.clanarchy.users.lgo;
+  # A machine's ZeroTier address, from the clan var — never a literal, because
+  # moving the controller renumbers all of them (see clan.nix).
+  zt = m: lib.trim (builtins.readFile ../../vars/shared/zerotier-ip-${m}-zerotier/ip/value);
   editorBin =
     if cfg.editor == "govim"
     then "nvim"
@@ -418,10 +421,10 @@ in {
           # pattern list, so it would have re-triggered the GnuPG 2.4.x card
           # failure this block exists to prevent. Every other machine already
           # lists its .local form; miralda was the one gap.
-          "miralda miralda.local miralda.goclan.org 10.0.10.171 fdda:106a:123a:d561:1099:93da:106a:123a" = {
+          "miralda miralda.local miralda.goclan.org 10.0.10.171 ${zt "miralda"}" = {
             HostKeyAlgorithms = "ssh-ed25519";
           };
-          "biene.local biene.skynet.lan 10.0.10.105 fdda:106a:123a:d561:1099:93da:ef5d:598c" = {
+          "biene.local biene.skynet.lan 10.0.10.105 ${zt "biene"}" = {
             HostKeyAlgorithms = "ssh-ed25519";
           };
           # jens serves a CA-signed cert host key (it has the openssh-cert
@@ -448,10 +451,10 @@ in {
           #   fdda:…       ZeroTier, and the important one: `clan machines
           #                update` connects over ZeroTier, so leaving it out
           #                would miss the one path that actually deploys.
-          "jens jens.local jens.goclan.org jens.skynet.lan 10.0.10.173 fdda:106a:123a:d561:1099:9389:afa5:121b" = {
+          "jens jens.local jens.goclan.org jens.skynet.lan 10.0.10.173 ${zt "jens"}" = {
             PubkeyAuthentication = "unbound";
           };
-          "ernst ernst.local ernst.goclan.org ernst.skynet.lan 10.0.50.10 fdda:106a:123a:d561:1099:933e:4c60:711f" = {
+          "ernst ernst.local ernst.goclan.org ernst.skynet.lan 10.0.50.10 ${zt "ernst"}" = {
             PubkeyAuthentication = "unbound";
           };
           # birte serves a CA-signed cert host key like ernst, so it hits the
@@ -480,7 +483,7 @@ in {
           # THE RULE: any new way of naming a machine has to be added here at
           # the same time, or it re-triggers a bug that looks like the network
           # being down.
-          "birte birte.local birte.goclan.org birte.skynet.lan fdda:106a:123a:d561:1099:931a:a82e:da69" = {
+          "birte birte.local birte.goclan.org birte.skynet.lan ${zt "birte"}" = {
             PubkeyAuthentication = "unbound";
           };
           # Stage-1 (initrd) sshd for remote zroot unlock.  Different sshd,
@@ -508,7 +511,7 @@ in {
           # 2.4.x refuse to sign with the card-backed ed25519 auth key
           # ("agent refused operation").
           "ernst-zt" = {
-            HostName = "fdda:106a:123a:d561:1099:933e:4c60:711f";
+            HostName = "${zt "ernst"}";
             User = "root";
             HostKeyAlias = "ernst.skynet.lan";
             PubkeyAuthentication = "unbound";
