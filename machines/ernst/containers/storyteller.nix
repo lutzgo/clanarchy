@@ -508,10 +508,12 @@ in {
   #      that will fail an hour into transcription.
   #
   # `storyteller-stage pairs` answers the question that actually gates this
-  # workflow — which titles exist in BOTH libraries — and it compares TITLES,
-  # not author directories, because Audiobookshelf files Banks under
-  # "Iain M. Banks" and Bindery under "Iain Banks". An author-level join misses
-  # real pairs; that trap cost a wrong answer during M17's follow-up.
+  # workflow — which titles exist in BOTH libraries.  It compares TITLES and
+  # the author's SURNAME only, not full author directories, because
+  # Audiobookshelf files Banks under "Iain M. Banks" and Bindery under
+  # "Iain Banks". A full-name join misses real pairs; that trap cost a wrong
+  # answer during M17's follow-up.  No author check at all was the opposite
+  # mistake — see emit_pairs in storyteller-stage.sh.
   ##############################################################################
   environment.systemPackages = [storytellerStage];
 
