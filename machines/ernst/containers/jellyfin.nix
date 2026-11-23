@@ -364,6 +364,17 @@ in {
         isReadOnly = true;
       };
 
+      # TubeSync's downloads (containers/tubesync.nix).  Until 2026-11-23 this
+      # bind did not exist: TubeSync's header said it wrote "straight into the
+      # tree Jellyfin already scans", but nothing ever mounted that tree here,
+      # so 53 GB of channel downloads were invisible.  Configured in the UI as
+      # a "YouTube" library — see docs/guides/youtube.md.  RO: the writer is
+      # TubeSync, never Jellyfin.
+      "/media/Server001/YouTube" = {
+        hostPath = "/srv/media/youtube/video";
+        isReadOnly = true;
+      };
+
       # M8, shape (ii): Jellyfin's OWN DVR is the recorder — Tvheadend only
       # shares tuners (see containers/tvheadend.nix's header for the
       # argument).  This is the ONE writable media bind in this container,

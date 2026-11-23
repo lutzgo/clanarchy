@@ -1,8 +1,10 @@
 # machines/ernst/containers/tubesync.nix
 #
 # TubeSync on ernst: subscribe to YouTube channels and playlists, download with
-# yt-dlp on a schedule, and write straight into the tree Jellyfin already scans
-# — no import stage, no second copy (M9 — see docs/history.md).
+# yt-dlp on a schedule, and write straight into a tree Jellyfin scans — no
+# import stage, no second copy (M9 — see docs/history.md).  The Jellyfin side
+# is the "/media/Server001/YouTube" bind in containers/jellyfin.nix, added
+# 2026-11-23; before that nothing mounted this tree into Jellyfin at all.
 #
 # ── TIER: podman, AND THE PREMISE WAS RE-CHECKED RATHER THAN INHERITED ──────
 #

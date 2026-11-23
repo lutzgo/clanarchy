@@ -75,6 +75,7 @@ nav:
     - Mail: guides/mail.md
     - The reading stack: guides/reading-stack.md
     - The music pipeline: guides/music-pipeline.md
+    - YouTube playlists: guides/youtube.md
     - Navidrome clients: guides/navidrome-clients.md
     - The document store: guides/document-store.md
     - Video courses in Jellyfin: guides/courses.md
