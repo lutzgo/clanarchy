@@ -75,7 +75,7 @@ wallpapers like jens and miralda.
 | `htpc.nix` | The `go` couch user (deliberately **not** in `wheel`) + its password generator, and the one set of HDMI/audio facts the HTPC role needs |
 | `courses.nix` | The Courses Jellyfin library + `course-import`. A separate library because Jellyfin's metadata providers are a **per-library** setting, and a sibling of `tvshows/` so Sonarr's root scan does not list every course as unmapped |
 | `courses/*.json` | One manifest per course. `slug` is **the download filename stem and nothing else** — it is not reliably the URL slug |
-| `yt-audio.nix`, `yt-audio-import.sh` | `yt-audio-import`: unlisted YouTube playlists → audio into Audiobookshelf and Navidrome (`music/_youtube/`), daily. The playlist links live on ernst in `/srv/state/yt-audio/playlists`, not here — the repo is public. See `docs/guides/youtube.md` |
+| `yt-audio.nix`, `yt-audio-import.sh` | `yt-audio-import`: unlisted YouTube playlists → audio into Audiobookshelf (`library/`, `kinder/`) and Navidrome (`music/_youtube/`), daily; `add-book` turns a whole playlist into one book. The playlist links live on ernst in `/srv/state/yt-audio/{playlists,books}`, not here — the repo is public. See `docs/guides/youtube.md` |
 | `course-import.sh`, `rom-import.sh` | Bodies of `course-import` / `rom-import`. Not standalone: the Nix file prepends the uid/gid/path constants, so the tool cannot drift from the deployment |
 | `microvms/wg-qbittorrent.nix` | The microvm tier's only occupant: qBittorrent + slskd behind a commercial WireGuard VPN with an nftables killswitch |
 | `containers/*.nix` | One file per service — see below |

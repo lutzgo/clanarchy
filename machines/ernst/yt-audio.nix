@@ -8,6 +8,8 @@
 # for video, so it is not duplicated here.
 #
 #   playlist "→ Hörspiel"  →  /srv/audiobooks/library/<Channel>/<Title>/  →  Audiobookshelf
+#   playlist "→ Kinder"    →  /srv/audiobooks/kinder/<Channel>/<Title>/   →  Audiobookshelf (Kinder)
+#   `add-book <playlist>`  →  /srv/audiobooks/{library,kinder}/<Author>/<Title>/, one book
 #   playlist "→ Musik"     →  /srv/media/library/music/_youtube/<Artist>/ →  Navidrome
 #   playlist "→ Jellyfin"  →  TubeSync → /srv/media/youtube/video/       →  Jellyfin
 #
@@ -40,17 +42,18 @@
   ...
 }: let
   stateDir = "/srv/state/yt-audio";
-  absRoot = "/srv/audiobooks/library";
+  absRoot = "/srv/audiobooks"; # library/ and kinder/ — the two Audiobookshelf libraries
   musicLib = "/srv/media/library/music";
 
   ytAudioImport = pkgs.writeShellApplication {
     name = "yt-audio-import";
     # yt-dlp from nixpkgs is already wrapped with ffmpeg (extract, embed) and
     # deno (current yt-dlp needs a JS runtime to solve YouTube's challenges).
-    runtimeInputs = with pkgs; [yt-dlp coreutils];
+    runtimeInputs = with pkgs; [yt-dlp coreutils findutils gnugrep systemd];
     text = ''
       STATE=${stateDir}
       CONF=${stateDir}/playlists
+      BOOKS=${stateDir}/books
       ABS_ROOT=${absRoot}
       MUSIC_ROOT=${musicLib}/_youtube
 
@@ -87,7 +90,7 @@ in {
       Group = "media";
       UMask = "0007";
       ProtectSystem = "strict";
-      ReadWritePaths = [stateDir absRoot musicLib];
+      ReadWritePaths = [stateDir "${absRoot}/library" "${absRoot}/kinder" musicLib];
       PrivateTmp = true;
       NoNewPrivileges = true;
       Nice = 10;
