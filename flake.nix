@@ -682,6 +682,8 @@
             # jellyfin.nix only for reading order: it owns /srv/media/library/
             # courses, which jellyfin.nix bind-mounts into the container.
             ./machines/ernst/courses.nix
+            # YouTube playlists → Audiobookshelf / Navidrome (`yt-audio-import`).
+            ./machines/ernst/yt-audio.nix
             ./machines/ernst/containers/jellyfin.nix
             # The *arr stack, one container across six files. common.nix
             # declares it; the rest merge into it by media domain. See its
