@@ -82,7 +82,7 @@ store, so it only activates:
 P=$(nix eval --no-update-lock-file --raw '.#nixosConfigurations.birte.config.system.build.toplevel')
 clan machines update birte --build-host root@ernst-zt     # builds; copy step WILL fail
 nix copy --no-check-sigs --from ssh://root@ernst-zt \
-  --to 'ssh://root@[fdda:106a:123a:d561:1099:931a:a82e:da69]' "$P"
+  --to "ssh://root@[$(cat vars/shared/zerotier-ip-birte-zerotier/ip/value)]" "$P"
 clan machines update birte                                 # activates only
 ```
 

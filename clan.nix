@@ -285,16 +285,28 @@
       };
 
       # ── Zerotier VPN ────────────────────────────────────────────────────────
-      # miralda is the controller; all machines are peers.
+      # ernst is the controller; all machines are peers.
+      #
+      # ernst, not miralda, since 2026-11-23.  ZeroTier's data plane is
+      # peer-to-peer, but every member's certificate of membership is issued
+      # by the controller, and peers only accept each other's frames while
+      # those certificates are recent.  With the controller on a laptop that
+      # is often off, jens↔ernst went dark over ZeroTier while both showed
+      # `OK` and a DIRECT path; it came back the moment miralda was switched
+      # on.  ernst is the one machine that is always on.
+      #
+      # The network id is derived from the controller's identity, so this
+      # change renumbered every ZeroTier address.  Nothing in the repo may
+      # hardcode one: read vars/shared/zerotier-ip-<m>-zerotier/ip/value.
       zerotier = {
-        roles.controller.machines."miralda" = {};
+        roles.controller.machines."ernst" = {};
         # Explicit machines, not `tags.all` — same upstream allowlist gap as
         # sshd above. EVERY tag-assigned role hits it, not only ones this file
         # gives settings to: the merged inventory materialises the role
         # submodule's `settings` defaults regardless, so the sanitiser finds
         # `instances.zerotier.roles.peer.tags.all.settings` and refuses it.
         #
-        # miralda appears in both roles, which is deliberate and is what
+        # ernst appears in both roles, which is deliberate and is what
         # `tags.all` did before: it is the controller AND a peer.
         roles.peer.machines = {
           ernst = {};

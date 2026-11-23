@@ -28,6 +28,9 @@
   pkgs,
   ...
 }: let
+  # ernst's ZeroTier address, from the clan var (see clan.nix: the controller
+  # move renumbered every address, so none is written down).
+  ernstZt = lib.trim (builtins.readFile ../vars/shared/zerotier-ip-ernst-zerotier/ip/value);
   cfg = config.clanarchy.remoteBuilder;
   gen = config.clan.core.vars.generators.remote-builder-ssh;
 
@@ -96,7 +99,7 @@ in {
         #   `hostPublicKey` below
         #
         # all -> ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILd954KHVjUAOX06pHP/+ou78tpo6OYKMQL2ew3eUqEt
-        "fdda:106a:123a:d561:1099:933e:4c60:711f"
+        ernstZt
       ];
       description = "Names/addresses the pinned builder host key is valid for.";
     };
@@ -117,7 +120,7 @@ in {
 
     fallbackAddress = lib.mkOption {
       type = lib.types.str;
-      default = "fdda:106a:123a:d561:1099:933e:4c60:711f";
+      default = ernstZt;
       description = ''
         ernst's ZeroTier address, which is reachable wherever the overlay is.
       '';
