@@ -223,7 +223,7 @@ matching zdata import is a boot that stopped in stage 1.
   first minute it is worth investigating rather than waiting out.
 - **`No route to host`** means the machine is down or mid-POST. Normal, briefly.
 
-**Remote unlock has still never been completed on ernst.** The channel has been
+**Remote unlock has still never been completed on ernst** (as of 2026-11-24; see the MAC fix below). The channel has been
 observed to come up correctly — sshd listening, interface configured — but no
 reboot has yet been unlocked through it, and the 2026-08-24 attempt failed from
 the client side while stage-1 sshd sat there logging nothing.
@@ -285,10 +285,14 @@ and speaks from the NIC's hardware address, `a0:ad:9f:1c:9d:74` — visible in
 the journal as the link-local `fe80::a2ad:9fff:fe1c:9d74`.
 
 Anything upstream holding a neighbour entry for `10.0.50.10` therefore has the
-*wrong* link-layer address during stage 1 until it revalidates. This is a
-candidate explanation and **not** a confirmed cause — `ip neigh` from the
-netdebug unit, plus whether the client's `-vvv` output ever leaves
-`Connecting to`, is what will confirm or kill it.
+*wrong* link-layer address during stage 1 until it revalidates.
+
+**2026-11-24: acted on.** That boot's stage-1 journal showed sshd listening on
+2222 and `enp13s0` with carrier from second 11, and yet for 190 s no connection
+arrived and ping from miralda (routed via the UDM) got nothing. Stage 1 now
+answers from br0's MAC (`clanarchy.initrdSsh.macAddress`), so the UDM's cached
+entry is simply right. `debug = true` is on for the next boot to confirm it.
+Read the journal afterwards (command above), then set `debug` back to `false`.
 
 - `-tt` (double `t`) forces ssh to allocate a pty even when stdin
   isn't one (as inside a `while` loop).
