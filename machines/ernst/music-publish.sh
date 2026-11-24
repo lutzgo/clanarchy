@@ -45,7 +45,11 @@ trap 'rm -rf "$work"' EXIT
 sort -u "$MANIFEST" > "$work/done"
 comm -23 "$work/all" "$work/done" > "$work/new"
 
-untagged=$(find "$ST/_" -type f 2>/dev/null | wc -l)
+# `_/` only exists while beets has tagless tracks. Once a human has cleared
+# it, a bare `find` exits 1 and pipefail turns that into a silent exit 1 of the
+# whole script — the music-import failure of 2026-11-24 06:00.
+untagged=0
+[ -d "$ST/_" ] && untagged=$(find "$ST/_" -type f | wc -l)
 echo "staged: $(wc -l < "$work/all")  already published: $(wc -l < "$work/done")  to publish: $(wc -l < "$work/new")  untagged (_/, left alone): $untagged"
 
 [ -s "$work/new" ] || exit 0
