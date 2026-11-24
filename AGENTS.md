@@ -55,28 +55,31 @@ run for *every* machine, so an unrelated pending prompt blocks any target.
 With `nixos-rebuild` (local recovery only) always use `--no-reexec`, never
 `--fast`, and never `--build-host localhost`.
 
-### It builds on the TARGET, which matters for the two handhelds
+### It builds on the target, and the target hands the work to ernst
 
-`clan machines update birte` compiles **on birte**, not here and not on a remote
-builder. MEASURED 2026-10-25: a jovian-nixos bump had the Steam Deck at 36
-compilers and load 43 building vendor Mesa while ernst sat at load 1.7. The
-`[<machine>]` log prefix is just clan's label, so the log looks the same either
-way — compare `ps -eo comm= | grep -cE '^(cc1plus|cc1)$'` on both hosts.
+`clan machines update <laptop>` builds through the **laptop's** nix-daemon. Every
+laptop is a remote-builder client by default (`clanarchy.remoteBuilder.client`,
+modules/nix-remote-builder.nix), and that daemon config is already live from
+the previous deploy, so derivations go to ernst. Since 2026-11-24 a client keeps
+only `client.localJobs` (2) local slots. Before that it had one per core, and
+anything beyond ernst's 8 slots compiled locally (birte at load 43 building
+vendor Mesa, 2026-10-25). Verified the path end to end 2026-11-24: jens with
+`--max-jobs 0` built a test derivation on ernst and copied it back.
 
-`clanarchy.remoteBuilder.client` does **not** help here: it only affects builds
-the machine *initiates*, and during a deploy that config is not active yet.
+So a laptop deploy is just:
 
-`--build-host root@ernst-zt` moves the build but then fails at the last step,
-because clan copies the closure **build-host → target-host** directly and ernst
-has no key on the laptops:
-
-```
-Failed to copy closure to root@fdda:…
+```bash
+clan machines update birte
 ```
 
-Build on ernst, relay the closure through this laptop (which trusts both), then
-re-run plain `clan machines update` — every path is already in the target's
-store, so it only activates:
+Check it really offloads: `ps -eo comm= | grep -cE '^(cc1plus|cc1)$'` should
+stay near 0 on the laptop and climb on ernst. The `[<machine>]` log prefix is
+clan's label and looks the same either way.
+
+**Fallback, when the laptop cannot reach ernst** (ernst down, or the laptop
+off the overlay): build on ernst and relay the closure through this laptop.
+`--build-host root@ernst-zt` alone fails at the copy, because clan copies
+build-host -> target directly and ernst has no key on the laptops:
 
 ```bash
 P=$(nix eval --no-update-lock-file --raw '.#nixosConfigurations.birte.config.system.build.toplevel')
