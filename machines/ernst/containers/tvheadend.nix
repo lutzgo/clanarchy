@@ -249,6 +249,10 @@
   fritzAddr = "192.168.178.1";
   containerFritzAddr = "192.168.178.2/24";
 in {
+  # Keep the picons SOURCE tarball (45 MB) alive in the system closure: upstream
+  # deletes old releases, so it cannot be re-downloaded. See pkgs/picons.nix.
+  system.extraDependencies = [picons.src];
+
   ##############################################################################
   # Host side 1 — the FRITZ segment: enp12s0 ⇄ br-fritz ⇄ container fritz0.
   #

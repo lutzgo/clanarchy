@@ -119,9 +119,15 @@
   python3,
   xz,
 }: let
-  # Dated release tag. Assets under a GitHub release have stable URLs, unlike
-  # the "latest" redirect, so this is pinnable.
-  release = "2026-09-06--00-52-42";
+  # Dated release tag. NOT a permanent URL: upstream publishes about weekly
+  # and DELETES releases older than ~2 months (14 left on 2026-11-24, oldest
+  # 2026-09-27, plus a long-lived "Last SNP" 2025-10-11). 2026-09-06 had gone
+  # 404 by then, and a nixpkgs update that changes this derivation's inputs
+  # needs the tarball again. The tvheadend module therefore keeps `src` in
+  # ernst's closure (system.extraDependencies), so it is never garbage-
+  # collected and a rebuild never has to download it. Bumping `release`
+  # still needs a release that exists upstream at that moment.
+  release = "2026-11-21--01-40-43";
 
   # 220x132 rather than 100x60: this is read on a television, from a sofa.
   # light.on.transparent rather than dark: Kodi's Estuary skin is dark, and a
@@ -137,7 +143,7 @@ in
 
     src = fetchurl {
       url = "https://github.com/picons/picons/releases/download/${release}/${variant}_${release}.hardlink.tar.xz";
-      hash = "sha256-QVQNGj4kNMphP7sjL1B9ar37kLqq769k6fSN+bQoShA=";
+      hash = "sha256-LyFTEzlqi15dVXzhN+1kMCj7oOp7bnkPtABic7BLxR0=";
     };
 
     nativeBuildInputs = [python3 xz];

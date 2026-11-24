@@ -1,0 +1,109 @@
+name: Update
+
+# Once a week: move flake.lock forward on the channels flake.nix already
+# names (nixpkgs = the nixos-unstable channel), run the same gate as
+# check.yml, and open ONE pull request with the result. The operator reads
+# it, merges, and deploys (docs/guides/updating-the-fleet.md). Nothing here
+# merges or deploys.
+#
+# The check runs INSIDE this job, not via check.yml: a pull request opened
+# with GITHUB_TOKEN does not trigger other workflows (GitHub's loop guard), so
+# check.yml would never run on it. The result goes into the PR body, and a
+# failing update is opened as a DRAFT so it cannot be merged by accident.
+#
+# Needs, once, in the repo settings: Settings -> Actions -> General ->
+# Workflow permissions -> "Allow GitHub Actions to create and approve pull
+# requests". Without it the last step fails with 403.
+
+on:
+  schedule:
+    - cron: "0 4 * * 1" # Mondays 04:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@v14
+
+      - uses: DeterminateSystems/magic-nix-cache-action@v8
+
+      - name: Update flake.lock
+        id: update
+        run: |
+          nix flake update 2>&1 | tee update.log
+          if git diff --quiet flake.lock; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check (same gate as check.yml)
+        id: check
+        if: steps.update.outputs.changed == 'true'
+        run: |
+          set +e
+          {
+            nix shell nixpkgs#alejandra -c bash scripts/check.sh &&
+            nix build --no-update-lock-file -L --no-link \
+              '.#checks.x86_64-linux.mneme' \
+              '.#checks.x86_64-linux.container-modules' \
+              '.#checks.x86_64-linux.scripts'
+          } > check.log 2>&1
+          rc=$?
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          tail -n 60 check.log
+
+      - name: Open pull request
+        if: steps.update.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RC: ${{ steps.check.outputs.rc }}
+        run: |
+          branch="chore/flake-update-$(date -u +%Y-%m-%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add flake.lock
+          git commit -m "chore(flake): weekly input update $(date -u +%Y-%m-%d)"
+          git push --force origin "$branch"
+
+          if [ "$RC" = 0 ]; then
+            verdict="✅ check passed: all five machines evaluate, formatting and build-time checks OK."
+            draft=""
+          else
+            verdict="❌ check FAILED. Opened as a draft; see the log below. Fix on this branch or skip this week."
+            draft="--draft"
+          fi
+
+          {
+            echo "Weekly \`nix flake update\` on the channels pinned in flake.nix."
+            echo
+            echo "$verdict"
+            echo
+            echo "**Operator steps:** merge, then deploy per docs/guides/updating-the-fleet.md (ernst last)."
+            echo
+            echo "<details><summary>Updated inputs</summary>"
+            echo
+            echo '```'
+            grep -E "Updated input|→" update.log | grep -v "^\s*'" | head -100
+            echo '```'
+            echo "</details>"
+            echo
+            echo "<details><summary>Check output (last 60 lines)</summary>"
+            echo
+            echo '```'
+            tail -n 60 check.log
+            echo '```'
+            echo "</details>"
+          } > body.md
+
+          gh pr create $draft --head "$branch" --base main \
+            --title "chore(flake): weekly input update $(date -u +%Y-%m-%d)" \
+            --body-file body.md
