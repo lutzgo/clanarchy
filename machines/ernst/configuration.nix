@@ -173,6 +173,17 @@
     # was flashed last time matters. The pure metadata cache under
     # /var/cache/fwupd is deliberately NOT persisted — it re-downloads.
     "/var/lib/fwupd"
+
+    # Podman's image store (overlay on ZFS, same driver as before).  Not
+    # persisted until 2026-11-24, so the boot-time rollback wiped every image
+    # and each boot re-pulled all of them (15 pulls: cwa, romm, romm-db,
+    # storyteller, teddycloud, tubesync).  Those pulls run before the network
+    # is fully up, so the first attempt fails; most units recover by
+    # restarting, but RomM depends on romm-db and stayed down after two
+    # reboots that day.  Persisting it also takes Docker Hub (rate limits,
+    # outages) off the boot path.  Leftover container records are harmless:
+    # every oci-containers unit runs `podman run --replace --rm`.
+    "/var/lib/containers"
   ];
 
   system.stateVersion = "26.05";
