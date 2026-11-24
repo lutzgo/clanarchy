@@ -10,6 +10,15 @@
   # the coupling is now solved directly there, by pinning
   # `zfs.latestCompatibleLinuxPackages`.
   clanarchy.rootfs = "zfs";
+
+  # Kernel PINNED to the 6.18 LTS series, on ernst only. modules/rootfs.nix
+  # leaves ZFS machines on nixpkgs' default kernel, which upstream keeps
+  # ZFS-compatible; this pin additionally stops a channel update from moving
+  # the NAS to a new kernel series on its own. Patch releases within 6.18
+  # still arrive with each update. When 6.18 leaves nixpkgs (or ZFS supports
+  # the next LTS and you want it), raise this by hand. If ZFS ever does not
+  # build against it, evaluation fails in `check`, before anything deploys.
+  boot.kernelPackages = pkgs.linuxPackages_6_18;
   # DNS: no global `networking.search` — see modules/networking/resolved.nix.
   # The skynet.lan search suffix + Technitium pin will be attached to the
   # static enp13s0 networkd unit in Phase 2 (still DHCP as of now).

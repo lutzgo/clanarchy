@@ -994,7 +994,10 @@ in {
           # of 1800 caches a too-early NXDOMAIN for thirty minutes, poisoning
           # every retry.  Measured 2026-08-23.
           dnsResolver = "1.1.1.1:53";
-          dnsPropagationCheck = true;
+          # nixpkgs split `dnsPropagationCheck` (2026-11). The old `true` was
+          # lego's authoritative-nameserver check, which is this option; the
+          # new recursive check stays at its default (off).
+          dnsAuthoritativePropagationCheck = true;
           reloadServices = ["postfix.service" "dovecot.service"];
         };
       };

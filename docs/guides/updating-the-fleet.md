@@ -1,101 +1,54 @@
 # Updating the whole fleet
 
-Bumping flake inputs and rolling the result across all five machines.
-For deploying one machine, see [Deploying](deploy.md); this guide is about the
-part that has repeatedly gone wrong — **which** inputs move, in what order, and
-how to know before deploying that nothing broke.
+The fleet follows **one channel**: `nixpkgs` is the `nixos-unstable` channel
+tarball (`flake.nix`), which only advances after NixOS's own system tests
+pass. Every other input follows `nixpkgs`. Updating means moving
+`flake.lock` forward on that channel. Nobody writes hashes: `nix flake update`
+writes them, and they are what makes every machine build the same thing.
 
-## The rule: never plain `nix flake update`
+## The weekly update PR
 
-`nix flake update` bumps everything at once, and in this flake at least two
-inputs have been *measured* to break a machine on their own. When sixteen
-inputs move together, a broken eval tells you nothing about which one did it,
-and you are bisecting a sixteen-way change with a household depending on the
-result.
+`.github/workflows/update.yml` runs every Monday at 04:00 UTC (or by hand:
+Actions → Update → Run workflow). It runs `nix flake update`, runs the same
+gate as `check.yml`, and opens **one** PR, `chore(flake): weekly input update
+<date>`:
 
-Update in **named stages**, each its own PR, each gated before merge:
+- ✅ in the body: all five machines evaluate. Merge it, then deploy (below).
+- ❌ in the body: it is a draft. The log is in the PR. Either fix it on that
+  branch or ignore it; next week's run tries again.
 
-```bash
-nix flake update <input> [<input> …]     # named, never bare
-```
-
-Bare `nix flake update` is reasonable in exactly one case: you intend to read
-and act on every line of the resulting diff.
-
-## Stage 0 — know where you are
+Doing it by hand is the same thing:
 
 ```bash
-# direct inputs, oldest first — these are what you are deciding about
-for i in $(jq -r '.nodes.root.inputs | keys[]' flake.lock); do
-  n=$(jq -r --arg i "$i" '.nodes.root.inputs[$i]' flake.lock)
-  d=$(jq -r --arg n "$n" '.nodes[$n].locked.lastModified // empty' flake.lock)
-  [ -n "$d" ] && printf '%-26s %s\n' "$i" "$(date -d @"$d" +%Y-%m-%d)"
-done | sort -k2
+jj new main
+nix flake update
+nix develop -c bash scripts/check.sh      # five machines + fmt, all OK
 ```
 
-Everything else in `flake.lock` is transitive and moves when its parent does.
+## What does NOT move on its own
 
-Then establish the **baseline drvPaths**, because the only trustworthy statement
-about an input bump is which machines' derivations it changed:
+These are pinned in `flake.nix` on purpose, each with its reason next to it.
+`nix flake update` leaves them where they are; changing one is its own PR.
 
-```bash
-for m in ernst miralda jens biene birte; do
-  printf '%-8s %s\n' "$m" \
-    "$(nix eval --no-update-lock-file --raw ".#nixosConfigurations.$m.config.system.build.toplevel.drvPath")"
-done | tee /tmp/drv-before.txt
-```
+| Input / setting | Pinned to | Why |
+|---|---|---|
+| `simple-nixos-mailserver` | commit `9004c7d` | upstream dropped kresd; needs unbound in the mail container first |
+| ernst's kernel | `linuxPackages_6_18` (LTS) | the NAS changes kernel series only by hand; ZFS must support it |
+| `niri-tablet`, `oniri`, `noctalia`, `zjstatus` | tags / commits | upstream release pins |
 
-## Stage 1 — the inputs that move cleanly
+ZFS machines are safe on this channel: if OpenZFS does not build against a
+kernel, evaluation fails in `check`, so the PR goes red before anything
+deploys.
 
-Bump the ones with no known coupling, all in one PR. After bumping:
-
-```bash
-nix develop -c bash scripts/check.sh     # five machines + fmt, all OK
-```
-
-Then diff the drvPaths against `/tmp/drv-before.txt`. **A machine whose drvPath
-is unchanged is not being redeployed** — that is the single most useful fact in
-the whole process, and it is how you keep the deploy list short.
-
-For a machine that *did* move, find out why with `nix-diff`, not by guessing:
-
-```bash
-nix-diff /nix/store/<before>.drv /nix/store/<after>.drv | head -40
-```
-
-**Do not read `nix build --dry-run` as the change set.** It lists every
-derivation missing from *this laptop's* store, which wildly overstates a remote
-host's rebuild — it once read `container-arr` as changing when its system drv
-was byte-identical (#346).
-
-## Stage 2 — the coupled and the dangerous, one PR each
-
-Inputs that are known not to move alone. **Verify each claim here before
-trusting it — these expire.** The check is two minutes:
-
-```bash
-nix flake update <input>
-nix eval --no-update-lock-file --raw '.#nixosConfigurations.<machine>.config.system.build.toplevel.drvPath'
-git checkout flake.lock          # or: cp back a copy you made first
-```
-
-Current state of the known couplings, re-measured 2026-11-01:
-
-| Input | Status |
-|---|---|
-| `nixpkgs` | One input for the whole fleet since #368 (the nixpkgs-unstable channel tarball, `flake.nix`). The old `nixpkgs-unstable` input and its `importService` coupling with birte are gone along with the second package set. |
-| `jovian-nixos` | **No longer blocked.** It used to fail with `attribute 'holo-session-selection' missing`; that was Jovian moving its package set into a `makeScope` namespace, fixed in #362 by using `pkgs.jovianPackages.*`. Moved alone successfully on 2026-10-25. |
-| `clan-core` | Carries `nixpkgs` with it. Treat as a nixpkgs bump, never as a small one. |
-
-Anything touching a service with persistent state — Immich, Nextcloud,
-Paperless, the mail stack — is its own PR with its own rollback plan, not part
-of a sweep. Take a `pg_dump` **and** a ZFS snapshot first:
+Anything touching a service with persistent state (Immich, Nextcloud,
+Paperless, the mail stack) when it changes *behaviour*, not just version,
+gets a snapshot first:
 
 ```bash
 zfs snapshot zdata/state@pre-<change>-$(date +%Y%m%d-%H%M)
 ```
 
-## Stage 3 — deploy, in this order
+## Deploy, in this order
 
 Deploy **ernst last**. It runs the ingress path, so if it comes up wrong
 nothing else is reachable by name — and you want the laptops already updated and
@@ -125,7 +78,7 @@ on the *target*, and a handheld APU compiling vendor Mesa takes hours while
 ernst idles. Use the build-on-ernst-and-relay recipe in
 [AGENTS.md](https://github.com/lutzgo/clanarchy/blob/main/AGENTS.md) §2.
 
-## Stage 4 — verify, and mean it
+## Verify, and mean it
 
 A deploy that exits 0 has not been verified. For each machine:
 

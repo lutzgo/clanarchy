@@ -23,8 +23,16 @@
     # the branch at 1c89083 (10-30) could not build `python3Packages.posthog`
     # at all, which took open-webui and therefore ernst down; the channel of
     # the same day built it from cache. For a fleet, the gated snapshot is
-    # the right input. It is also what clan-core itself uses.
-    nixpkgs.url = "https://nixos.org/channels/nixpkgs-unstable/nixexprs.tar.xz";
+    # the right input.
+    #
+    # `nixos-unstable`, not `nixpkgs-unstable` (switched 2026-11-24). Both are
+    # gated channels, but nixpkgs-unstable only waits for package builds;
+    # nixos-unstable also waits for the NixOS system tests (boot, ZFS,
+    # systemd, networking), which is what a fleet of NixOS machines needs.
+    # The price is that it lags a few days behind. This is the channel the
+    # fleet sticks to: the weekly update PR (.github/workflows/update.yml)
+    # just moves the lock forward on it.
+    nixpkgs.url = "https://nixos.org/channels/nixos-unstable/nixexprs.tar.xz";
 
     clan-core = {
       url = "https://git.clan.lol/clan/clan-core/archive/main.tar.gz";
@@ -209,8 +217,16 @@
     # what lets the five mailboxes come out of clan vars rather than out of a
     # database seeded by hand.  JMAP, Stalwart's real advantage, buys nothing
     # here: aerc and K-9 are both IMAP.
+    #
+    # PINNED TO A COMMIT (2026-11-24), so the weekly update cannot move it.
+    # Upstream main after 2026-10-21 removed `mailserver.localDnsResolver`
+    # (the kresd the mail container relies on for DNSBL lookups; see
+    # machines/ernst/containers/mail.nix) and now asserts a DNSSEC resolver
+    # such as unbound. That is a change to the live mail path, so it gets its
+    # own PR: swap kresd for unbound in the container, then set this back to
+    # `/main`.
     simple-nixos-mailserver = {
-      url = "gitlab:simple-nixos-mailserver/nixos-mailserver/main";
+      url = "gitlab:simple-nixos-mailserver/nixos-mailserver/9004c7d9b0986719a76ca6945a718434508d7b2e";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
