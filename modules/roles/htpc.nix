@@ -715,6 +715,29 @@
   # argument `p`, never from `pkgs.kodiPackages`.  Keep that in mind before
   # "just adding" a skin or PVR client here.
 
+  # Kodi 21.3 with upstream xbmc/xbmc#27320 backported (merged to master
+  # 2025-10-17, never to Omega; vendored as fetched with `gh pr diff --patch`,
+  # applies to 21.3 unmodified).
+  #
+  # Every add-on invocation runs in a sub-interpreter that
+  # CPythonInvoker::onExecutionDone tears down after swapping to the main
+  # thread state. 21.3 finds that state with
+  # PyInterpreterState_ThreadHead(PyInterpreterState_Main()), without the
+  # GIL and from a thread that does not own it, and then PyThreadState_Swap
+  # segfaults. #27320 keeps the main thread state from Py_Initialize and
+  # creates a per-thread state instead of borrowing one across threads.
+  # MEASURED on ernst: 14 kodi.bin SIGSEGVs between 2026-11-04 and
+  # 2026-11-24, six of them 19:50–01:18 on 11-23/24; all 10 whose core was
+  # still on disk crashed in PyThreadState_Swap or PyEval_RestoreThread
+  # under CPythonInvoker.
+  #
+  # NOT a Python downgrade: Kodi 21 against python311Packages was tried and
+  # does not build in this nixpkgs (numpy 2.5 needs >= 3.12, Pillow needs
+  # numpy). Drop the patch when nixpkgs moves to Kodi 22.
+  kodiBase = pkgs.kodi-gbm.overrideAttrs (old: {
+    patches = (old.patches or []) ++ [./pkgs/kodi-pr27320-python-threadstate.patch];
+  });
+
   # The client as Big Picture launches it: scaled for the couch.
   #
   # A wrapper rather than launch options on the Steam entry, because Steam
@@ -1322,8 +1345,8 @@ in {
 
       package = lib.mkOption {
         type = lib.types.package;
-        default = pkgs.kodi-gbm.withPackages cfg.mediaClient.addons;
-        defaultText = lib.literalExpression "pkgs.kodi-gbm.withPackages config.clanarchy.roles.htpc.mediaClient.addons";
+        default = kodiBase.withPackages cfg.mediaClient.addons;
+        defaultText = lib.literalExpression "pkgs.kodi-gbm (with xbmc/xbmc#27320 backported) .withPackages config.clanarchy.roles.htpc.mediaClient.addons";
         description = ''
           Media client to install. Kodi with the Jellyfin add-on, talking to
           the Jellyfin server ernst already runs in an nspawn container. The
