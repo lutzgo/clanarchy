@@ -457,12 +457,23 @@
           ${
             if s.hugepages
             then ''
+              # USABLE pages = HugePages_Free - HugePages_Rsvd.  "Free" still
+              # counts pages another process has already reserved (mapped,
+              # not yet touched), and those cannot be handed to qemu.  The
+              # pool is not exclusive to this guest: Postgres (huge_pages=try)
+              # and PHP-FPM in the containers take from it whenever the guest
+              # is not running.  2026-11-24: the guest was down 1.5 h (a USB
+              # stick unplugged), they took pages, Free read exactly 4096 =
+              # need with 206 reserved, so the top-up below never ran and qemu
+              # failed "unable to map backing store for guest RAM" on every
+              # restart.
               need=${toString hugePages}
-              free=$(awk '/^HugePages_Free:/ {print $2}' /proc/meminfo)
+              usable() { awk '/^HugePages_Free:/ {f=$2} /^HugePages_Rsvd:/ {r=$2} END {print f-r}' /proc/meminfo; }
+              free=$(usable)
               if [ "$free" -lt "$need" ]; then
                 total=$(cat /proc/sys/vm/nr_hugepages)
                 echo $(( total + need - free )) > /proc/sys/vm/nr_hugepages || true
-                free=$(awk '/^HugePages_Free:/ {print $2}' /proc/meminfo)
+                free=$(usable)
               fi
               if [ "$free" -ge "$need" ]; then
                 printf '%s\n' -object "memory-backend-memfd,id=ram0,size=${toString s.memoryMiB}M,hugetlb=on,hugetlbsize=2M,prealloc=on" > ${runDir}/mem.args
