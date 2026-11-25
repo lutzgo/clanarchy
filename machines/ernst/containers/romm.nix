@@ -703,11 +703,25 @@ in {
           "${stateDir}/redis:/redis-data"
         ];
         ports = [];
-        # The database first; oci-containers turns this into Requires/After
-        # on podman-romm-db.service.
-        dependsOn = ["romm-db"];
+        # NOT `dependsOn = ["romm-db"]`: oci-containers turns that into
+        # Requires=, and a Requires= on a unit whose FIRST start fails marks
+        # this one "dependency failed" for good, even after romm-db recovers
+        # on its own restart a few seconds later.  That is exactly what kept
+        # RomM down after both reboots on 2026-11-24 (romm-db's image pull ran
+        # before the network was up).  Ordering + Wants instead, below: RomM
+        # starts once romm-db's start job is done, and if the DB is not there
+        # yet it exits and Restart= tries again.
       };
     };
+  };
+
+  # Soft dependency on the database (see the note where dependsOn used to be).
+  # RestartSec spaces the retries out so a slow DB start cannot exhaust
+  # systemd's start limit (5 starts in 10 s) and leave RomM dead anyway.
+  systemd.services.podman-romm = {
+    wants = ["podman-romm-db.service"];
+    after = ["podman-romm-db.service"];
+    serviceConfig.RestartSec = "15s";
   };
 
   # ── SCHEDULING PRIORITY, MERGED ONTO THE GENERATED UNIT ─────────────────────
