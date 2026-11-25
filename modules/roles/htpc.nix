@@ -1971,6 +1971,17 @@ in {
     #
     # VERIFY: during a film, `pw-top` ERR on this node stays flat, and
     # /proc/asound/card1/pcm3p/sub0/status shows `delay` well above 1024.
+    #
+    # RAISED TO 4096 (2026-11-24), because headroom is counted in FRAMES and
+    # TrueHD runs the sink at 192 kHz. 1024 frames is 21 ms at 48 kHz but only
+    # 5.3 ms at 192 kHz. MEASURED during a TrueHD Atmos film, stuttering
+    # audibly: device correctly opened 8 ch / 192 kHz (HBR), quantum 4096
+    # (21 ms), ALSA `delay: 3204` (17 ms) with `avail_max` 29564 of 32768,
+    # i.e. less buffered than one wake-up interval, and ERR climbing 461 -> 463
+    # in 2 s. E-AC3 (also 192 kHz, 2 ch) on the same evening stayed flat, so
+    # the margin only fails for the heaviest stream. 4096 is 21 ms at 192 kHz
+    # (one full quantum) and 85 ms at 48 kHz; Kodi compensates lip sync from
+    # the latency the sink reports.
     services.pipewire.wireplumber.extraConfig."51-htpc-tv-audio" = lib.mkIf (cfg.display.gpuPciAddress != null) {
       "monitor.alsa.rules" = [
         {
@@ -1978,7 +1989,7 @@ in {
           actions.update-props = {
             "priority.session" = 2000;
             "priority.driver" = 2000;
-            "api.alsa.headroom" = 1024;
+            "api.alsa.headroom" = 4096;
           };
         }
       ];
