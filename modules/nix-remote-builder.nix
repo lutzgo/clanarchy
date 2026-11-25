@@ -58,7 +58,35 @@
     else null;
 in {
   options.clanarchy.remoteBuilder = {
-    client.enable = lib.mkEnableOption "dispatching Nix builds to a remote clan builder";
+    client.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = !cfg.server.enable;
+      defaultText = lib.literalExpression "!config.clanarchy.remoteBuilder.server.enable";
+      description = ''
+        Dispatch Nix builds to the remote clan builder (ernst). ON BY DEFAULT
+        for every machine that is not itself the builder, i.e. every laptop.
+        It covers deploys too: `clan machines update <laptop>` runs the build
+        through the laptop's own nix-daemon, which is already configured by
+        the previous deploy.
+      '';
+    };
+    client.localJobs = lib.mkOption {
+      type = lib.types.ints.unsigned;
+      default = 2;
+      description = ''
+        `max-jobs` on a client: how many derivations it builds LOCALLY at once.
+
+        Nix offers every build to the remote builder first and builds locally
+        only when all remote slots are busy, when the builder is unreachable,
+        or when a derivation asks for it (`preferLocalBuild`, the trivial
+        writeText-style ones). With the old default (one job per core: 12 on
+        jens, 8 on birte) everything beyond ernst's 8 slots ran on the laptop,
+        so a big deploy still compiled locally (birte at load 43 building Mesa,
+        2026-10-25). Small but not 0: with ernst down a laptop still builds,
+        slowly, instead of failing; trivial derivations stay local and skip
+        the round-trip.
+      '';
+    };
     server.enable = lib.mkEnableOption "accepting Nix builds dispatched by clan clients";
 
     hostName = lib.mkOption {
@@ -182,6 +210,7 @@ in {
     # ── Client: dispatch builds ───────────────────────────────────────────
     (lib.mkIf cfg.client.enable {
       nix.distributedBuilds = true;
+      nix.settings.max-jobs = lib.mkDefault cfg.client.localJobs;
 
       # Let the builder fetch from binary caches itself instead of having
       # every dependency proxied over SSH from here.
