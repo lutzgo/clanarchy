@@ -89,6 +89,22 @@ in {
       description = "IPv4 default-route gateway for the initrd interface.";
     };
 
+    macAddress = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "b2:8b:e1:f2:1e:7c";
+      description = ''
+        MAC address to give the interface in stage 1. Set it to whatever MAC
+        holds {option}`address` in the RUNNING system when that is not the
+        NIC's own, e.g. a bridge with a pinned MAC.
+
+        Why: the gateway caches IP -> MAC from the running system. If stage 1
+        answers from a different MAC, the gateway keeps delivering to the old
+        one and the initrd sshd sees no packet at all: on ernst (2026-11-24)
+        sshd listened on 2222 with carrier for 190 s, no connection arrived
+        and ping failed, while the gateway's entry pointed at br0's MAC.
+      '';
+    };
     kernelModules = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [];
@@ -146,6 +162,8 @@ in {
     boot.initrd.network.enable = true;
     boot.initrd.systemd.network.networks."50-initrd-${cfg.interface}" = {
       matchConfig.Name = cfg.interface;
+      # See the macAddress option: answer from the MAC the gateway has cached.
+      linkConfig = lib.mkIf (cfg.macAddress != null) {MACAddress = cfg.macAddress;};
       networkConfig = {
         Address = cfg.address;
         Gateway = cfg.gateway;

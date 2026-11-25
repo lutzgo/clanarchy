@@ -701,6 +701,15 @@ in {
     interface = "enp13s0";
     address = "10.0.50.10/24"; # same as running-system; never up simultaneously
     gateway = "10.0.50.1";
+    # br0's pinned MAC (netdev 50-br0 above). In stage 1 the raw enp13s0
+    # answers for 10.0.50.10, and with its own a0:ad:9f:1c:9d:74 the UDM kept
+    # sending to br0's MAC: no packet reached the initrd sshd (2026-11-24).
+    # Side effect, harmless: enp13s0 keeps this MAC after switch-root, the
+    # same address br0 already uses; enp13s0 is a bridge port with no L3.
+    macAddress = "b2:8b:e1:f2:1e:7c";
+    # ONE diagnostic boot to confirm the fix, then back to false
+    # (docs/guides/remote-unlock.md).
+    debug = true;
     kernelModules = ["atlantic" "igc"];
     authorizedKeyFiles = [
       ../miralda/yubikey_ed25519.pub # mirrors modules/users/admin.nix
