@@ -707,9 +707,6 @@ in {
     # Side effect, harmless: enp13s0 keeps this MAC after switch-root, the
     # same address br0 already uses; enp13s0 is a bridge port with no L3.
     macAddress = "b2:8b:e1:f2:1e:7c";
-    # ONE diagnostic boot to confirm the fix, then back to false
-    # (docs/guides/remote-unlock.md).
-    debug = true;
     kernelModules = ["atlantic" "igc"];
     authorizedKeyFiles = [
       ../miralda/yubikey_ed25519.pub # mirrors modules/users/admin.nix
