@@ -6,8 +6,8 @@ There are two keys in the household: **lgo's** (YubiKey 5C NFC, serial
 covers what has to be backed up, and what to do so both keys stay usable.
 
 !!! note "Shell"
-    The command blocks are **bash**. lgo's login shell is nushell, so type
-    `bash` first and `exit` when done.
+    Commands in §3 and §4 are written for nushell, lgo's login shell. Any
+    other block is bash: type `bash` first and `exit` when done.
 
 ---
 
@@ -33,147 +33,141 @@ only place a secret exists.
 
 ---
 
-## 2. Current state — MEASURED on miralda 2026-11-18
+## 2. Current state — MEASURED on miralda 2026-11-27
 
-The stick (`sda`, 1.9 GB) has two partitions: `sda1` (LUKS, the secrets) and
-`sda2` (ext2, label `gpg-public-2022-`). The public partition holds
-`gpg-0x7BE3C4FBC4BD9026-2022-08-23.asc`:
+The stick (`sda`, 1.9 GB) has two partitions:
 
-| Key | On the card (19345499) | In the 2022 public export |
+- `sda1`: LUKS, label `gpg-2022-08-23`. It holds `gnupg-workspace/`.
+- `sda2`: ext2, label `gpg-public-2022-`. Public keys only.
+
+| Key | On the card (19345499) | On the stick |
 |---|---|---|
-| Master `0x7BE3C4FBC4BD9026` rsa4096 [C] | — (offline, as it should be) | yes |
-| Sign `…C7F06026F01896C4` rsa4096 | yes | yes |
-| Encrypt `…14694FF23C252D99` rsa4096 | yes (created 2022-08-23) | yes |
-| Auth `…AB99704F6CEEADCE` rsa4096 | **no** — replaced | yes |
-| Auth `…9673D4E35E293E5A` **ed25519 — the SSH key in `authorizedKeys`** | yes | **no** |
+| Main key `0x7BE3C4FBC4BD9026` rsa4096 [C] | — (offline, as it should be) | `mastersub.key` (2022), `mastersub-2026-11-27.key` |
+| Sign `…C7F06026F01896C4` rsa4096, **expired 2023-08-23** | yes | yes |
+| Encrypt `…14694FF23C252D99` rsa4096, **expired 2023-08-23** | yes | yes |
+| Auth `…AB99704F6CEEADCE` rsa4096, expired, unused | no | yes |
+| Auth `…F0BCBDAF59BAD230` **ed25519 — the SSH key, `openpgp:0x59BAD230`** | yes | `mastersub-2026-11-27.key` only |
 
-So the SSH key the fleet trusts (`openpgp:0x5E293E5A`) was added after the
-2022 backup. Whether the encrypted partition has it is **not yet checked** —
-§3 step 1 finds out. If it doesn't, that subkey exists only on the card, and
-§3 step 3 fixes that.
+The SSH key before it, `0x5E293E5A` (2026), was never backed up. It existed
+only on the card and was replaced on 2026-11-27 by the steps in §3.
 
-Two things to clean up on the stick:
+The files written in 2026 are owned by root with mode `0600`, and the folder
+belongs to uid 1000. The scripts use `sudo` for both, so expect a sudo prompt.
 
+Open items:
+
+- **The sign and encrypt subkeys expired in 2023.** SSH doesn't care, but
+  signing and decrypting with GPG do. Extend them the next time the stick is
+  open (`gpg --quick-set-expire <main fpr> 2y <subkey fpr>…` in the throwaway
+  home, then export as in `yubikey-new-ssh-subkey.sh` step 3).
 - `sda2` is **unencrypted** but holds `flores/` and `lombok/`, with
-  `ssh_host_*_key` **private** host keys. Neither machine is in the fleet. If
-  they are retired, delete the folders. Otherwise move them into the LUKS
-  partition.
-- The label says 2022. Once §3 has run, the public export's file name should
-  carry the new date.
+  `ssh_host_*_key` **private** host keys. Neither machine is in the fleet.
+  Delete the folders if the machines are retired; otherwise move them into
+  `sda1`.
+- There is one stick. A second copy kept somewhere else is the cheapest
+  insurance here.
 
 ---
 
-## 3. Refresh the USB backup (do this now, then after every key change)
+## 3. Rotate the SSH key (or refresh the backup)
 
-### Step 1 — look at what is on it
+Use this when the SSH subkey is missing from the backup, or when you want a
+new one. Each step leaves a working state behind.
 
-```bash
-udisksctl unlock -b /dev/sda1          # LUKS passphrase
-udisksctl mount -b /dev/dm-<N>         # the device the unlock printed
-ls -la /run/media/lgo/<secret-label>/
+The commands are for **nushell** as written. The scripts are bash and are
+started with `bash …`.
+
+**Unlock the stick.** Both scripts need it:
+
+```
+udisksctl unlock -b /dev/sda1
+udisksctl mount -b /dev/dm-3
 ```
 
-Inspect every secret export without importing it anywhere:
+`unlock` asks for the LUKS passphrase and prints `/dev/dm-N`. Use that N in
+the mount line, because it changes between boots. The mount point is
+`/run/media/lgo/gpg-2022-08-23`.
 
-```bash
-T=$(mktemp -d)
-for f in /run/media/lgo/<secret-label>/*.{key,asc,gpg}; do
-  echo "== $f"; gpg --homedir "$T" --import-options show-only --import "$f" 2>/dev/null | grep -E '^(sec|ssb)'
-done
-rm -rf "$T"
+**Step 1 — make the key and back it up.** This doesn't touch the card or
+`~/.gnupg`:
+
+```
+bash /home/lgo/Projects/clanarchy/scripts/yubikey-new-ssh-subkey.sh
 ```
 
-The backup is complete when `sec` for `7BE3C4FBC4BD9026` appears **without**
-a `#` (`sec#` means only a stub), and there is an `ssb` ed25519 line ending in
-`5E293E5A`.
+It asks for the **GPG main key passphrase** (the 2022 one, in KeePassXC) and
+`sudo`. It writes `mastersub-<date>.key`, `sub-<date>.key` and
+`public-<date>.asc` next to the old files, reads them back to check, and
+prints the new `ssh-ed25519 … openpgp:0x…` line.
 
-If there is a whole GnuPG home directory on the stick instead of export files,
-use `gpg --homedir /run/media/lgo/<secret-label>/<dir> -K`. Don't write into it
-— copy it to a temp directory first (step 2).
+**Step 2 — authorise it next to the old key, and deploy.** Put the line in a
+new `machines/miralda/yubikey_ed25519_<year>.pub`. Read that file wherever
+`yubikey_ed25519.pub` is read — `grep -rn yubikey_ed25519 --include=*.nix .`
+finds them all, including two that use `../miralda/` and `../../miralda/`
+paths. Add it to `clan.nix` next to `lgo-yubikey` too. Then deploy **every**
+machine while the old key still works. A machine you skip can only be
+reached the old way until it is deployed some other way. Don't put two keys
+in one `.pub` file: `authorizedKeys.keys` takes single-line strings, and
+evaluation fails.
 
-### Step 2 — work in a throwaway GnuPG home, never in `~/.gnupg`
+**Step 3 — move it onto the card.** Plug in only that YubiKey:
 
-```bash
-export GNUPGHOME=$(mktemp -d)
-gpg --import /run/media/lgo/<secret-label>/<secret export>
-gpg -K          # sec = master present, ssb = subkeys present
+```
+bash /home/lgo/Projects/clanarchy/scripts/yubikey-subkey-to-card.sh
 ```
 
-Every later step happens in here. The stick stays read-only until step 4, and
-`~/.gnupg` on miralda is never touched — it holds card stubs only, and that is
-how it should stay.
+The script refuses to run if any other YubiKey is connected. It works out
+which `key N` the subkey is and proves it with gpg's own selection marker.
+Then it prints the five lines to type into gpg (`key N`, `keytocard`, `3`,
+`y`, `save`). Dialogs ask for the **main key passphrase**, then the card's
+**OpenPGP Admin PIN**. That is not the PIN you type for SSH: it is at least 8
+characters, and a wrong one costs a try (5 in total). Afterwards the script
+checks that the card's auth slot holds the new key, adds its keygrip to
+`~/.gnupg/sshcontrol` and shows `ssh-add -L`. Test with `ssh root@ernst true`.
 
-### Step 3 — only if the ed25519 SSH subkey is missing from the backup
+**Step 4 — retire the old key.** Make the new line the only content of
+`yubikey_ed25519.pub`, drop the `_<year>` file and its reads, and deploy.
 
-It can't be pulled off the card. Make a new one, **back it up first**, then
-put it on the cards:
+**Lock the stick again:**
 
-```bash
-gpg --quick-add-key 7BE3C4FBC4BD9026 ed25519 auth 0
-gpg --export-ssh-key 7BE3C4FBC4BD9026     # → the new public key
+```
+udisksctl unmount -b /dev/dm-3
+udisksctl lock -b /dev/sda1
 ```
 
-Then: step 4 (backup), §4 (write it to the card), and replace the public key in
-**both** places the fleet reads it — `clan.nix` (`"lgo-yubikey"` under
-`roles.server.settings.authorizedKeys`) and
-`machines/miralda/yubikey_ed25519.pub`. Deploy every machine **while the old key
-still works**. The `clanarchy_admin` key is the fallback if one is missed.
+Two traps the scripts handle, in case you ever do this by hand:
 
-### Step 4 — write the backup back
-
-```bash
-B=/run/media/lgo/<secret-label>; D=$(date +%F)
-gpg --armor --export-secret-keys 7BE3C4FBC4BD9026 > "$B/gpg-secret-$D.asc"
-gpg --armor --gen-revoke 7BE3C4FBC4BD9026        > "$B/gpg-revoke-$D.asc"   # if none is there yet
-cp ~/.config/sops/age/keys.txt                      "$B/age-keys-$D.txt"    # the regular age key — the sops fallback
-# public half → the unencrypted partition
-udisksctl mount -b /dev/sda2
-gpg --armor --export 7BE3C4FBC4BD9026 | sudo tee /run/media/lgo/gpg-public-2022-/gpg-0x7BE3C4FBC4BD9026-$D.asc >/dev/null
-```
-
-Keep the old files until you have checked the new ones (step 1 again on the new
-file names). Then:
-
-```bash
-rm -rf "$GNUPGHOME"; unset GNUPGHOME
-sync; udisksctl unmount -b /dev/sda2; udisksctl unmount -b /dev/dm-<N>; udisksctl lock -b /dev/sda1
-```
-
-A single stick is a single point of failure. A second stick with the same
-contents, kept somewhere else, costs ten minutes, and so does every later
-refresh.
+- A throwaway `GNUPGHOME` needs `disable-ccid` in its `scdaemon.conf`, like
+  `~/.gnupg` has. Without it, its scdaemon fights pcscd for the card and
+  reports `No such device`. Stop the real agent first
+  (`gpgconf --kill gpg-agent`).
+- With two YubiKeys plugged in, gpg silently picks one of them. It may well be
+  the wrong one.
 
 ---
 
-## 4. Put lgo's GPG subkeys on a card (spare or replacement)
+## 4. Put lgo's keys on a replacement card
 
-From the throwaway home of §3 step 2, with the target card inserted:
+For the SSH key, use the same script with the target card as the only one
+plugged in:
 
-```bash
-gpg --edit-key 7BE3C4FBC4BD9026
-# gpg> list          note which ssb line is [S], [E], [A]
-# gpg> key 1         select ONE subkey (an asterisk marks it)
-# gpg> keytocard     slot: 1 = sign, 2 = encrypt, 3 = auth
-# gpg> key 1         deselect, then the next one
-# … repeat for each subkey …
-# gpg> save
+```
+bash /home/lgo/Projects/clanarchy/scripts/yubikey-subkey-to-card.sh
 ```
 
-`save` moves the subkeys out of the **throwaway** home, so for a second card,
-start again from §3 step 2. The stick is unaffected.
+The script only handles the SSH key (slot 3) today. For sign (slot 1) and
+encrypt (slot 2), extend their expiry first (§2), then follow the same pattern
+by hand in the throwaway home.
 
-Back in the real `~/.gnupg`, point the stubs at the card that is plugged in.
-This step is needed whenever you switch between two cards that hold the same
-keys:
+A replacement card also needs a **new age key**: see "Re-provisioning the PIV
+slot" in [yubikey.md](yubikey.md). Then add its `age1yubikey1…` to
+`sops/users/lgo/key.json` and run `sops updatekeys`.
 
-```bash
-gpg-connect-agent "scd serialno" "learn --force" /bye
-ssh-add -L          # ed25519 … cardno:<serial>
-```
-
-A replacement card also needs a **new age key**: "Re-provisioning the PIV slot"
-in [yubikey.md](yubikey.md), then add its `age1yubikey1…` to
-`sops/users/lgo/key.json` and `sops updatekeys`.
+To find the Admin PIN among many KeePassXC entries without spending tries
+blindly: stop gpg (`gpgconf --kill gpg-agent`), then run
+`ykman --device <serial> openpgp keys set-touch aut off`. It asks only for the
+Admin PIN, and if the PIN is right it rewrites a setting to the value it
+already had. `ykman --device <serial> openpgp info` shows the tries left.
 
 ---
 
@@ -240,14 +234,15 @@ Where both of you log in to one account, register **both** keys on it:
 
 | You changed… | Then |
 |---|---|
-| a GPG subkey (new, extended expiry) | §3 step 4 (backup) → §4 for each card that should carry it |
+| a GPG subkey (new, extended expiry) | new dated backup on the stick (§3 step 1 shows how) → §4 for each card that should carry it |
 | a TOTP account on a shared login | enrol it on both keys, seed in KeePassXC |
 | a passkey on a shared login | register both keys, update the KeePassXC list |
 | her or lgo's pam_u2f registration | edit `clanarchy.u2f.credentials`, deploy |
 | a PIN | KeePassXC |
 
-Once a year: run §3 step 1 against the stick and compare with
-`gpg --card-status`, and check the second stick if there is one.
+Once a year: unlock the stick and compare `gpg --card-status` with the newest
+`mastersub-*.key` (`sudo cat <file> | gpg --list-packets | grep keyid`, since the file is root-owned). Every key on the
+card must be in the backup. Check the second stick too, if there is one.
 
 ## Lost key
 

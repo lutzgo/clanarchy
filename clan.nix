@@ -280,10 +280,7 @@
         };
         roles.server.settings.authorizedKeys = {
           "admin-machine-1" = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPo4uZn6hVFTnJ0K7eagj1XL0jVn9t6sSU8RAejhWBy+ clanarchy_admin";
-          "lgo-yubikey" = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDjwV5tzb5mAhtUqgrfzU1FR35btJrvIjPM+PfxBAz4W openpgp:0x5E293E5A";
-          # Successor of lgo-yubikey, backed up on the offline stick (2026-11-27).
-          # Both stay until the card carries it — docs/guides/yubikey-two-keys.md §3.
-          "lgo-yubikey-2026" = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHWqIBqtNcJbK+BruKbXHCR4ktt3wYM3QHAhda0N8HdB openpgp:0x59BAD230";
+          "lgo-yubikey" = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHWqIBqtNcJbK+BruKbXHCR4ktt3wYM3QHAhda0N8HdB openpgp:0x59BAD230";
         };
       };
 
