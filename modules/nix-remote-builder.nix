@@ -9,7 +9,7 @@
 #
 # The awkward part is *who* connects.  Remote builds are dispatched by the
 # nix-daemon, which runs as root.  It cannot reuse lgo's access to ernst —
-# that authenticates with the YubiKey (`openpgp:0x5E293E5A`), which needs
+# that authenticates with the YubiKey (`openpgp:0x59BAD230`), which needs
 # gpg-agent inside an interactive session — and root on miralda has no key of
 # its own (~/.ssh holds only a HM-managed config and known_hosts).  So this
 # module generates a dedicated keypair as a *shared* clan var: the private
