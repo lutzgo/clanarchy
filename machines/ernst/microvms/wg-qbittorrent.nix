@@ -1835,6 +1835,7 @@ in {
       };
       users.users.root.openssh.authorizedKeys.keyFiles = [
         ../../miralda/yubikey_ed25519.pub
+        ../../miralda/yubikey_ed25519_2026.pub
       ];
 
       ########################################################################

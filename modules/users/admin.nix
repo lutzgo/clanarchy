@@ -21,6 +21,7 @@
       openssh.authorizedKeys.keys = [
         (builtins.readFile ../../machines/miralda/clanarchy_admin.pub)
         (builtins.readFile ../../machines/miralda/yubikey_ed25519.pub)
+        (builtins.readFile ../../machines/miralda/yubikey_ed25519_2026.pub) # successor, see docs/guides/yubikey-two-keys.md
       ];
     };
 
@@ -28,6 +29,7 @@
       openssh.authorizedKeys.keys = [
         (builtins.readFile ../../machines/miralda/clanarchy_admin.pub)
         (builtins.readFile ../../machines/miralda/yubikey_ed25519.pub)
+        (builtins.readFile ../../machines/miralda/yubikey_ed25519_2026.pub) # successor, see docs/guides/yubikey-two-keys.md
       ];
 
       # ── ROOT HAS A PASSWORD SO THE EMERGENCY CONSOLE WORKS ────────────────
