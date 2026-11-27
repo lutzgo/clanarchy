@@ -710,6 +710,7 @@ in {
     kernelModules = ["atlantic" "igc"];
     authorizedKeyFiles = [
       ../miralda/yubikey_ed25519.pub # mirrors modules/users/admin.nix
+      ../miralda/yubikey_ed25519_2026.pub
     ];
   };
 }
