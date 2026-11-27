@@ -6,7 +6,7 @@ There are two keys in the household: **lgo's** (YubiKey 5C NFC, serial
 covers what has to be backed up, and what to do so both keys stay usable.
 
 !!! note "Shell"
-    Commands in §3 and §4 are written for nushell, lgo's login shell. Any
+    Commands in §3 to §6 are written for nushell, lgo's login shell. Any
     other block is bash: type `bash` first and `exit` when done.
 
 ---
@@ -19,10 +19,11 @@ the secret is:
 
 | Secret | Can it go on a 2nd card? | How the keys stay in step | Lives where |
 |---|---|---|---|
-| lgo's GPG subkeys (sign, encrypt, **SSH auth**) | Yes, **only from the offline backup** | Write the same subkeys to each card from the backup | USB stick, encrypted partition |
+| GPG subkeys (sign, encrypt, **SSH auth**) — lgo's, and hers (§5) | Yes, **only from the offline backup** | Write the same subkeys to each card from the backup | USB stick, encrypted partition |
 | lgo's age key (PIV slot 1) | No — it was generated on the card | Second key = second *recipient*, plus the regular age key as a fallback | Card only. The fallback is `~/.config/sops/age/keys.txt`, which belongs on the stick too |
-| TOTP codes (Yubico Authenticator) | Yes, **only at enrolment** | Add the same seed (QR code) to both keys at the same time | KeePassXC entry holds the seed |
-| Passkeys / FIDO2 website logins | No | Register each key on each site | A list in KeePassXC (see §5) |
+| TOTP codes (Yubico Authenticator) | Yes, **from the seed** | KeePassXC holds every seed; `yubikey-oath-sync.sh` copies them onto each key (§6) | KeePassXC entry, TOTP field |
+| Passkeys / FIDO2 website logins | No | Register each key on each site | A list in KeePassXC (see §7) |
+| The setup itself (apps on/off, touch policy, PINs set) | — | `yubikey-compare.sh` lists every difference (§6) | — |
 | Touch-for-sudo (pam_u2f) | No | One line per key in the repo — the same line works on every machine | `clanarchy.u2f.credentials` |
 
 So the **sources of truth** are: the **USB stick** (private keys),
@@ -57,9 +58,9 @@ belongs to uid 1000. The scripts use `sudo` for both, so expect a sudo prompt.
 Open items:
 
 - **The sign and encrypt subkeys expired in 2023.** SSH doesn't care, but
-  signing and decrypting with GPG do. Extend them the next time the stick is
-  open (`gpg --quick-set-expire <main fpr> 2y <subkey fpr>…` in the throwaway
-  home, then export as in `yubikey-new-ssh-subkey.sh` step 3).
+  signing and decrypting with GPG do. §3a extends them.
+- `~/.gnupg` on miralda holds **no public key** at all (measured: `gpg -k` is
+  empty). SSH works without it; GPG signing does not. §3a imports it.
 - `sda2` is **unencrypted** but holds `flores/` and `lombok/`, with
   `ssh_host_*_key` **private** host keys. Neither machine is in the fleet.
   Delete the folders if the machines are retired; otherwise move them into
@@ -146,6 +147,35 @@ Two traps the scripts handle, in case you ever do this by hand:
 
 ---
 
+## 3a. Extend the expiry (sign + encrypt subkeys)
+
+Expiry dates live in the **public** key, not on the card, so the card is not
+touched. Stick unlocked (as in §3), then:
+
+```
+bash /home/lgo/Projects/clanarchy/scripts/yubikey-extend-subkeys.sh
+```
+
+It asks for `sudo` and the **main key passphrase**. It sets every sign and
+encrypt subkey to expire 2 years from today (`EXPIRE=3y` before `bash` for
+another span), refuses to go on if one is still expired, and writes
+`mastersub-<date>-extended.key`, `sub-…` and `public-<date>-extended.asc` to
+the stick (read back). Then it imports the public key into `~/.gnupg`, marks
+it as your own (ultimate trust) and links it to the card. Check:
+`gpg --card-status` lists the keys without `expired`.
+
+For **her** key: `FPR=<her main key fingerprint> BACKUP=<stick>/<her folder>/mastersub-<date>.key OUTDIR=<stick>/<her folder>`
+before `bash`, on her machine or yours (her public key import is then
+harmless but unneeded on yours).
+
+Put the date of the next expiry in the calendar, a month early.
+
+Then anyone who has the old public key needs the new one
+(`public-<date>-extended.asc`): her machine, GitHub (if the key is there),
+a keyserver.
+
+---
+
 ## 4. Put lgo's keys on a replacement card
 
 For the SSH key, use the same script with the target card as the only one
@@ -156,7 +186,7 @@ bash /home/lgo/Projects/clanarchy/scripts/yubikey-subkey-to-card.sh
 ```
 
 The script only handles the SSH key (slot 3) today. For sign (slot 1) and
-encrypt (slot 2), extend their expiry first (§2), then follow the same pattern
+encrypt (slot 2), extend their expiry first (§3a), then follow the same pattern
 by hand in the throwaway home.
 
 A replacement card also needs a **new age key**: see "Re-provisioning the PIV
@@ -173,18 +203,45 @@ already had. `ykman --device <serial> openpgp info` shows the tries left.
 
 ## 5. Her key
 
-Her key has its own identity: nothing of lgo's goes on it.
+Her key has its own identity: nothing of lgo's goes on it. It is set up **the
+same way** as lgo's: an offline main key on the stick, three subkeys on the
+card, the same touch policy. Differences on purpose: ed25519/cv25519 instead
+of rsa4096 (faster, and her firmware 5.8 supports it), and no PIV age key
+(she is not a clan admin; add one later as in yubikey.md if she becomes one).
 
-**Once, when she gets it** (any machine with `ykman`, e.g. miralda):
+**Step 1 — her GPG key** (on miralda, stick unlocked as in §3, **only her key
+plugged in**, she sits next to you for the passphrase and PINs):
 
-1. Set PINs: `ykman fido access change-pin` (FIDO2) and
-   `ykman oath access change-password` (TOTP, optional). Put both in
-   KeePassXC.
-2. Register it for touch-to-sudo — see below.
-3. Enrol her TOTP accounts in Yubico Authenticator, **saving each seed or QR
-   code in KeePassXC first**. Then a lost key is a re-enrolment, not an
-   account recovery.
-4. Register it as a passkey or security key on her own accounts.
+```
+bash /home/lgo/Projects/clanarchy/scripts/yubikey-new-identity.sh
+```
+
+It asks for her name and email, then shows what it will do. In order:
+
+1. Creates her main key in a throwaway keyring in RAM. A dialog asks her to
+   **choose a passphrase**. KeePassXC: *GPG main key – <her name>*.
+2. Adds sign + encrypt (2 years) and auth/SSH (no expiry) subkeys.
+3. Writes `mastersub-`, `sub-`, `public-` and `revoke-<date>` into a folder
+   named after her first name on the stick, and reads them back — before
+   anything touches the card.
+4. Changes the card's OpenPGP PINs. Factory values: User PIN `123456`, Admin
+   PIN `12345678`. New ones into KeePassXC: *YubiKey 42221658 OpenPGP PIN /
+   Admin PIN*.
+5. Moves the three subkeys onto the card and checks the card's fingerprints
+   against the backup.
+6. Sets the touch policy like lgo's card and prints her `ssh-ed25519` line
+   (for when her machine joins the fleet).
+
+It stops without changing anything if another YubiKey is plugged in, or if
+her card already holds OpenPGP keys.
+
+**Step 2 — the rest, once:**
+
+1. FIDO2 PIN: `ykman --device 42221658 fido access change-pin`. KeePassXC.
+2. TOTP: see §6 — shared accounts come over from KeePassXC by script; her own
+   new accounts: **seed into KeePassXC first**, then onto the key.
+3. Register it as a passkey or security key on her own accounts.
+4. Touch-to-sudo, once her machine is in the fleet — below.
 
 **Touch-to-sudo on her laptop.** `modules/hardware/yubikey-u2f.nix` (fleet-wide,
 inert until enabled). Accepts a touch instead of the password for `sudo`,
@@ -216,12 +273,68 @@ user. The line is public data (key handle + public key), safe to commit.
 
 ---
 
-## 6. Shared accounts (bank, utilities, the household email)
+## 6. Keep both keys the same
+
+What can be the same on both keys, and the tool for it:
+
+| What | Tool | Same on both? |
+|---|---|---|
+| Applications on/off (USB + NFC), PIN states, OpenPGP touch policy, PIV slots, OTP slots | `yubikey-compare.sh` | Yes — fix what it lists |
+| TOTP accounts | `yubikey-oath-sync.sh` | Yes, for every seed in KeePassXC |
+| Passkeys / security keys | register both keys at the site (§7) | Yes, by hand |
+| GPG keys, SSH key, age key | — | **No**: one identity per person |
+
+**Compare** — both keys plugged in, read-only:
+
+```
+bash /home/lgo/Projects/clanarchy/scripts/yubikey-compare.sh
+```
+
+It masks what *must* differ (serials, key fingerprints) and prints every
+other difference, then both profiles side by side. Typical findings and
+fixes, always with `ykman --device <serial> …`:
+
+- an application off on one key: `config usb --enable OATH`
+  (or `config nfc --enable …`)
+- touch policy: `openpgp keys set-touch sig on` (asks the Admin PIN)
+- FIDO2 PIN not set: `fido access change-pin`
+
+`DEEP=1` before `bash` also lists the FIDO2 passkeys stored on each key (asks
+each FIDO2 PIN).
+
+**TOTP from KeePassXC onto the keys** — every entry with a TOTP seed in
+`~/goclan/Passwords/go.kdbx` (other file: `KDBX=…` before `bash`):
+
+```
+bash /home/lgo/Projects/clanarchy/scripts/yubikey-oath-sync.sh
+```
+
+It asks for the database password once and only **shows a plan** (`+ would
+add …`). To write it:
+
+```
+APPLY=1 bash /home/lgo/Projects/clanarchy/scripts/yubikey-oath-sync.sh
+```
+
+Only add, never delete or overwrite. Seeds go through a pipe, never to disk.
+To limit it to shared accounts: `ONLY='Amazon|PayPal'` before `bash`
+(a regular expression on the account name).
+
+The plan also lists `? only on this key, not in KeePassXC: …`. Those are
+seeds that exist **only on that YubiKey**: lose it and the account needs a
+recovery. Fix: at the site, turn TOTP off and on again, save the new QR/seed
+in KeePassXC (entry → TOTP → Set up), then run the sync. A name mismatch
+(KeePassXC `GitHub:lutzgo`, key `GitHub`) also shows up there; check before
+re-enrolling.
+
+---
+
+## 7. Shared accounts (bank, utilities, the household email)
 
 Where both of you log in to one account, register **both** keys on it:
 
-- **TOTP:** scan the QR code into both keys at once, and keep the seed in
-  KeePassXC. Most sites show the QR code only once.
+- **TOTP:** save the seed in KeePassXC first (most sites show the QR code
+  only once), then `yubikey-oath-sync.sh` (§6) puts it on both keys.
 - **Passkeys / security keys:** add both keys on the site's security page.
   Keep one KeePassXC entry, *YubiKey registrations*, listing each site and
   which keys are registered there. That list is the only record — a YubiKey
@@ -230,17 +343,19 @@ Where both of you log in to one account, register **both** keys on it:
 
 ---
 
-## 7. Checklist — after any change
+## 8. Checklist — after any change
 
 | You changed… | Then |
 |---|---|
-| a GPG subkey (new, extended expiry) | new dated backup on the stick (§3 step 1 shows how) → §4 for each card that should carry it |
-| a TOTP account on a shared login | enrol it on both keys, seed in KeePassXC |
+| a GPG subkey (new) | new dated backup on the stick (§3 step 1) → §4 for each card that should carry it |
+| a GPG expiry | §3a (card unchanged) → hand out the new public key |
+| a TOTP account | seed in KeePassXC → `yubikey-oath-sync.sh` |
 | a passkey on a shared login | register both keys, update the KeePassXC list |
 | her or lgo's pam_u2f registration | edit `clanarchy.u2f.credentials`, deploy |
 | a PIN | KeePassXC |
 
-Once a year: unlock the stick and compare `gpg --card-status` with the newest
+Once a year: run `yubikey-compare.sh` and `yubikey-oath-sync.sh` (plan only)
+with both keys plugged in. Unlock the stick and compare `gpg --card-status` with the newest
 `mastersub-*.key` (`sudo cat <file> | gpg --list-packets | grep keyid`, since the file is root-owned). Every key on the
 card must be in the backup. Check the second stick too, if there is one.
 
